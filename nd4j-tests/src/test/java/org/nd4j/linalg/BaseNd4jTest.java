@@ -31,6 +31,7 @@ import org.slf4j.LoggerFactory;
 import java.util.UUID;
 
 
+
 /**
  * Base Nd4j test
  * @author Adam Gibson
@@ -38,7 +39,7 @@ import java.util.UUID;
 public abstract class BaseNd4jTest  extends TestCase {
     private static Logger log = LoggerFactory.getLogger(BaseNd4jTest.class);
     protected Nd4jBackend backend;
-    public final static String DEFAULT_BACKED = "org.nd4j.linalg.defaultbackend";
+    public final static String DEFAULT_BACKEND = "org.nd4j.linalg.defaultbackend";
 
     public BaseNd4jTest() {
         this("",getDefaultBackend());
@@ -71,7 +72,7 @@ public abstract class BaseNd4jTest  extends TestCase {
      * given command line arguments
      */
     public static Nd4jBackend getDefaultBackend() {
-        String clazz = System.getProperty(DEFAULT_BACKED,"org.nd4j.linalg.jblas.JblasBackend");
+        String clazz = System.getProperty(DEFAULT_BACKEND,"org.nd4j.linalg.jblas.JblasBackend");
         try {
             return (Nd4jBackend) Class.forName(clazz).newInstance();
         } catch (Exception e) {
