@@ -26,15 +26,13 @@ import org.junit.Test;
 import org.nd4j.linalg.api.buffer.DataBuffer;
 import org.nd4j.linalg.api.buffer.DataBuffer.Type;
 import org.nd4j.linalg.api.complex.IComplexDouble;
-import org.nd4j.linalg.api.complex.IComplexFloat;
 import org.nd4j.linalg.api.complex.IComplexNDArray;
 import org.nd4j.linalg.api.complex.IComplexNumber;
 import org.nd4j.linalg.api.ndarray.INDArray;
-import org.nd4j.linalg.api.ops.impl.scalar.ScalarAdd;
 import org.nd4j.linalg.factory.Nd4j;
 import org.nd4j.linalg.factory.Nd4jBackend;
 import org.nd4j.linalg.util.ComplexUtil;
-import org.nd4j.linalg.util.Shape;
+import org.nd4j.linalg.api.shape.Shape;
 
 
 import static org.junit.Assert.*;
@@ -526,6 +524,31 @@ public  class ComplexNDArrayTestsFortran extends BaseComplexNDArrayTests  {
 
         sum = scalar.realComponent().doubleValue();
         assertEquals(6, sum, 1e-1);
+    }
+
+    @Test
+    public void testComplexCalculation() {
+        IComplexNDArray arr = Nd4j.createComplex(
+                new IComplexNumber[][]{{Nd4j.createComplexNumber(1, 1), Nd4j.createComplexNumber(2, 1)},
+                        {Nd4j.createComplexNumber(3, 2), Nd4j.createComplexNumber(4, 2)}});
+
+        IComplexNumber scalar =  arr.sumComplex();
+        double sum = scalar.realComponent().doubleValue();
+        assertEquals(10, sum, 1e-1);
+
+        double sumImag = scalar.imaginaryComponent().doubleValue();
+        assertEquals(6, sumImag, 1e-1);
+
+        IComplexNDArray res = arr.add(Nd4j.createComplexNumber(1, 1));
+        scalar = res.sumComplex();
+        sum = scalar.realComponent().doubleValue();
+        assertEquals(14, sum, 1e-1);
+        sumImag = scalar.imaginaryComponent().doubleValue();
+        assertEquals(10, sumImag, 1e-1);
+
+        //original array should keep as it is
+        sum = arr.sumComplex().realComponent().doubleValue();
+        assertEquals(10, sum, 1e-1);
     }
 
 
