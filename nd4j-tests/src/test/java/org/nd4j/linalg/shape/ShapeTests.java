@@ -207,13 +207,13 @@ public class ShapeTests extends BaseNd4jTest {
     @Test
     public void testNewAxis() {
         INDArray arr = Nd4j.linspace(1,4,4).reshape(2,2);
-        INDArray newAxisAssertion = Nd4j.create(new double[]{1, 3}).reshape(1,1,2);
-        INDArray newAxisGet = arr.get(new NDArrayIndex(0),NDArrayIndex.newAxis());
+        INDArray newAxisAssertion = Nd4j.create(new double[]{1, 2}).reshape(1,1,2);
+        INDArray newAxisGet = arr.get(NDArrayIndex.point(0),NDArrayIndex.newAxis());
         assertEquals(newAxisAssertion,newAxisGet);
 
         INDArray tensor = Nd4j.linspace(1,12,12).reshape(3,2,2);
         INDArray assertion = Nd4j.create(new double[][]{{1, 7}, {4, 10}}).reshape(1,2,2);
-        INDArray tensorGet = tensor.get(new NDArrayIndex(0), NDArrayIndex.newAxis());
+        INDArray tensorGet = tensor.get(NDArrayIndex.point(0), NDArrayIndex.newAxis());
         assertEquals(assertion,tensorGet);
 
     }
@@ -240,6 +240,22 @@ public class ShapeTests extends BaseNd4jTest {
             assertEquals("Failed at index " + i, assertions[i], arr);
         }
 
+    }
+
+
+    @Test
+    public void testDimShuffle() {
+        INDArray scalarTest = Nd4j.scalar(0.0);
+        INDArray broadcast = scalarTest.dimShuffle(new Object[]{'x'}, new int[]{0, 1}, new boolean[]{true, true});
+        assertTrue(broadcast.rank() == 3);
+        INDArray rowVector = Nd4j.linspace(1,4,4);
+        assertEquals(rowVector,rowVector.dimShuffle(new Object[] {0,1},new int[]{0,1},new boolean[]{false,false}));
+        //add extra dimension to row vector in middle
+        INDArray rearrangedRowVector = rowVector.dimShuffle(new Object[]{0,'x',1},new int[]{0,1},new boolean[]{true,true});
+        assertArrayEquals(new int[]{1,1,4},rearrangedRowVector.shape());
+
+        INDArray dimshuffed = rowVector.dimShuffle(new Object[] {'x', 0, 'x', 'x'},new int[]{0,1},new boolean[]{true,true});
+        assertArrayEquals(new int[]{1,1,1,1,4},dimshuffed.shape());
     }
 
 

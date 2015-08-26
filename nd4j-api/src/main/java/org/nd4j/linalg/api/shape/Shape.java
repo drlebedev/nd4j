@@ -20,6 +20,8 @@
 package org.nd4j.linalg.api.shape;
 
 import com.google.common.primitives.Ints;
+import org.nd4j.bytebuddy.shape.IndexMapper;
+import org.nd4j.bytebuddy.shape.ShapeMapper;
 import org.nd4j.linalg.api.complex.IComplexNDArray;
 import org.nd4j.linalg.api.ndarray.INDArray;
 import org.nd4j.linalg.factory.Nd4j;
@@ -28,9 +30,7 @@ import org.nd4j.linalg.indexing.NDArrayIndex;
 import org.nd4j.linalg.indexing.ShapeOffsetResolution;
 import org.nd4j.linalg.util.ArrayUtil;
 
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
+import java.util.*;
 
 /**
  * Encapsulates all shape related logic (vector of 0 dimension is a scalar is equivalent to
@@ -39,6 +39,19 @@ import java.util.List;
  * @author Adam Gibson
  */
 public class Shape {
+
+    private static Map<Integer,IndexMapper> indexMappers = Collections.synchronizedMap(new HashMap<Integer, IndexMapper>());
+    private static Map<Integer,IndexMapper> indexMappersC = Collections.synchronizedMap(new HashMap<Integer, IndexMapper>());
+
+    static {
+        for(int i = 0; i < 10; i++) {
+            indexMappersC.put(i,ShapeMapper.getInd2SubInstance('c',i));
+            indexMappers.put(i,ShapeMapper.getInd2SubInstance('f',i));
+
+        }
+    }
+
+
     /**
      * Create a copy of the matrix
      * where the new offset is zero
@@ -114,15 +127,11 @@ public class Shape {
         }
         else {
             INDArray ret = Nd4j.create(arr.shape());
-            for(int i = 0; i < ret.slices(); i++) {
-                INDArray putSlice = arr.slice(i);
-                if(putSlice.length() == ret.length()) {
-                    ret.assign(arr);
-                    break;
-                }
-                else
-                    ret.putSlice(i, putSlice);
+            for(int i = 0; i < arr.vectorsAlongDimension(0); i++) {
+                ret.vectorAlongDimension(i,0).assign(arr.vectorAlongDimension(i,0));
             }
+
+
             return ret;
         }
     }
@@ -526,9 +535,77 @@ public class Shape {
         if(arr instanceof IComplexNDArray)
             return Nd4j.createComplex(arr.data(),newShape,newStrides,arr.offset());
 
+
         return Nd4j.create(arr.data(),newShape,newStrides,arr.offset());
     }
 
+
+    /**
+     * Infer order from
+     * @param shape the shape to infer by
+     * @param stride the stride to infer by
+     * @param elementStride the element stride to start at
+     * @return the storage order given shape and element stride
+     */
+    public static char getOrder(int[] shape,int[] stride,int elementStride) {
+        int sd;
+        int dim;
+        int i;
+        boolean cContiguous = true;
+        boolean isFortran = true;
+
+        sd = 1;
+        for (i = shape.length - 1; i >= 0; --i) {
+            dim = shape[i];
+
+            if (stride[i] != sd) {
+                cContiguous = false;
+                break;
+            }
+        /* contiguous, if it got this far */
+            if (dim == 0) {
+                break;
+            }
+            sd *= dim;
+
+        }
+
+
+    /* check if fortran contiguous */
+        sd = elementStride;
+        for (i = 0; i < shape.length; ++i) {
+            dim = shape[i];
+            if (stride[i] != sd) {
+                isFortran = false;
+            }
+            if (dim == 0) {
+                break;
+            }
+            sd *= dim;
+
+        }
+
+        if(isFortran && cContiguous)
+            return 'a';
+        else if(isFortran && !cContiguous)
+            return 'f';
+        else if(!isFortran && !cContiguous)
+            return 'c';
+        else
+            return 'c';
+
+    }
+
+    /**
+     * Infer the order for the ndarray based on the
+     * array's strides
+     * @param arr the array to get the
+     *            ordering for
+     * @return the ordering for the given array
+     */
+    public static char getOrder(INDArray arr) {
+        return getOrder(arr.shape(),arr.stride(),arr.elementStride());
+    }
 
     /**
      * Convert the given index (such as 1,1)
@@ -557,15 +634,25 @@ public class Shape {
      * @return the mapped indexes along each dimension
      */
     public static int[] ind2sub(int[] shape,int index,int numIndices) {
-        int denom = numIndices;
+        IndexMapper mapper = indexMappers.get(shape.length);
+        if(mapper == null) {
+            mapper = ShapeMapper.getInd2SubInstance('f',shape.length);
+            indexMappers.put(index,mapper);
+            mapper = ShapeMapper.getInd2SubInstance('c',shape.length);
+            indexMappersC.put(index,mapper);
+        }
+
+
+
+     /*   int denom = numIndices;
         int[] ret = new int[shape.length];
         for(int i = ret.length - 1; i >= 0; i--) {
             denom /= shape[i];
             ret[i] = index / denom;
             index %= denom;
 
-        }
-        return ret;
+        }*/
+        return mapper.ind2sub(shape,index,numIndices,'f');
     }
 
     /**
@@ -607,6 +694,15 @@ public class Shape {
      * @return the mapped indexes along each dimension
      */
     public static int[] ind2subC(int[] shape,int index,int numIndices) {
+        IndexMapper mapper = indexMappersC.get(shape.length);
+        if(mapper == null) {
+            mapper = ShapeMapper.getInd2SubInstance('f',shape.length);
+            indexMappers.put(index,mapper);
+            mapper = ShapeMapper.getInd2SubInstance('c',shape.length);
+            indexMappersC.put(index,mapper);
+        }
+
+      /*
         int denom = numIndices;
         int[] ret = new int[shape.length];
         for(int i = 0; i < shape.length; i++) {
@@ -615,7 +711,8 @@ public class Shape {
             index %= denom;
 
         }
-        return ret;
+        return ret;*/
+        return mapper.ind2sub(shape,index,numIndices,'c');
     }
 
     /**

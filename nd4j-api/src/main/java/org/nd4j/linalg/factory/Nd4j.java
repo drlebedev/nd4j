@@ -563,9 +563,8 @@ public class Nd4j {
      * @return
      */
     public static INDArray tensorMmul(INDArray a,INDArray b,int[][] axes) {
-        if(a.rank() != b.rank())
-            throw new IllegalArgumentException("a and b must be same rank");
-        for(int i = 0; i < axes[0].length; i++) {
+        int validationLength = Math.min(axes[0].length,axes[1].length);
+         for(int i = 0; i < validationLength; i++) {
             if(a.size(axes[0][i]) != b.size(axes[1][i]))
                 throw new IllegalArgumentException("Size of the given axes at each dimension must be the same size.");
             if(axes[0][i] < 0)
@@ -593,7 +592,8 @@ public class Nd4j {
         int[] newAxesB = Ints.concat(axes[1],Ints.toArray(listB));
 
         int n2 = 1;
-        for(int i = 0; i < axes[0].length; i++) {
+        int aLength = Math.min(a.rank(), axes[0].length);
+        for(int i = 0; i < aLength; i++) {
             n2 *= a.size(axes[0][i]);
         }
 
@@ -603,19 +603,23 @@ public class Nd4j {
             oldShapeA[i] = a.size(oldShapeA[i]);
 
         int n3 = 1;
-        for(int i = 0; i < axes[1].length; i++) {
-            n3 *= a.size(axes[1][i]);
+        int bNax = Math.min(b.rank(), axes[1].length);
+        for(int i = 0; i < bNax; i++) {
+            n3 *= b.size(axes[1][i]);
         }
 
         int[] newShapeB = {n3,-1};
         int[] oldShapeB = Ints.toArray(listB);
-        for(int i = 0; i < oldShapeA.length; i++)
+        for(int i = 0; i < oldShapeB.length; i++)
             oldShapeB[i] = b.size(oldShapeB[i]);
 
 
 
-        INDArray at = a.permute(newAxesA).reshape('c',newShapeA);
-        INDArray bt = b.permute(newAxesB).reshape('c',newShapeB);
+        INDArray at = a.permute(newAxesA);
+        at = at.dup().reshape(newShapeA);
+        INDArray bt = b.permute(newAxesB);
+        bt = bt.dup().reshape(newShapeB);
+
         INDArray ret = at.mmul(bt);
 
         int[] aPlusB = Ints.concat(oldShapeA, oldShapeB);
@@ -2144,13 +2148,19 @@ public class Nd4j {
 
     /**
      *
-     * @param doubles
+     * @param data
      * @return
      */
     public static INDArray create(float[][] data) {
         return INSTANCE.create(data);
     }
 
+    /**
+     *
+     * @param data
+     * @param ordering
+     * @return
+     */
     public static INDArray create(float[][] data, char ordering) {
         return INSTANCE.create(data, ordering);
     }
@@ -2166,6 +2176,12 @@ public class Nd4j {
         return INSTANCE.create(data);
     }
 
+    /**
+     *
+     * @param data
+     * @param ordering
+     * @return
+     */
     public static INDArray create(double[][] data, char ordering) {
         return INSTANCE.create(data,ordering);
     }
@@ -4185,7 +4201,7 @@ public class Nd4j {
         if(d < tile.rank()) {
             repeat = Ints.concat(ArrayUtil.nTimes(tile.rank() - d,1),repeat);
         }
-        for(int i = 0; i < repeat.length; i++) {
+        for(int i = 0; i < shape.length; i++) {
             if(repeat[i] != 1) {
                 tile = tile.reshape(-1, n).repeat(0,new int[]{repeat[i]});
             }

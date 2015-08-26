@@ -164,7 +164,20 @@ public class ArrayUtil {
         return ret;
 
     }
-
+    /**
+     * Sum of an int array
+     * @param add the elements
+     *            to calculate the sum for
+     * @return the sum of this array
+     */
+    public static int sum(List<Integer> add) {
+        if (add.size() < 1)
+            return 0;
+        int ret = 0;
+        for (int i = 0; i < add.size(); i++)
+            ret += add.get(i);
+        return ret;
+    }
     /**
      * Sum of an int array
      * @param add the elements
@@ -179,6 +192,22 @@ public class ArrayUtil {
             ret += add[i];
         return ret;
     }
+    /**
+     * Product of an int array
+     * @param mult the elements
+     *            to calculate the sum for
+     * @return the product of this array
+     */
+    public static int prod(List<Integer> mult) {
+        if (mult.size() < 1)
+            return 0;
+        int ret = 1;
+        for (int i = 0; i < mult.size(); i++)
+            ret *= mult.get(i);
+        return ret;
+    }
+
+
     /**
      * Product of an int array
      * @param mult the elements
@@ -247,6 +276,79 @@ public class ArrayUtil {
         return false;
     }
 
+
+    /**
+     * Compute the offset
+     * based on teh shape strides and offsets
+     * @param shape the shape to compute
+     * @param offsets the offsets to compute
+     * @param strides the strides to compute
+     * @return the offset for the given shape,offset,and strides
+     */
+    public static int calcOffset(List<Integer> shape,List<Integer> offsets,List<Integer> strides) {
+        if(shape.size() != offsets.size() || shape.size() != strides.size())
+            throw new IllegalArgumentException("Shapes,strides, and offsets must be the same size");
+        int ret = 0;
+        for(int i = 0; i < offsets.size(); i++) {
+            //we should only do this in the general case, not on vectors
+            //the reason for this is we force everything including scalars
+            //to be 2d
+            if(shape.get(i) == 1 && offsets.size() > 2 && i > 0)
+                continue;
+            ret += offsets.get(i) * strides.get(i);
+        }
+
+        return ret;
+    }
+
+
+    /**
+     * Compute the offset
+     * based on teh shape strides and offsets
+     * @param shape the shape to compute
+     * @param offsets the offsets to compute
+     * @param strides the strides to compute
+     * @return the offset for the given shape,offset,and strides
+     */
+    public static int calcOffset(int[] shape,int[] offsets,int[] strides) {
+        if(shape.length != offsets.length || shape.length!= strides.length)
+            throw new IllegalArgumentException("Shapes,strides, and offsets must be the same size");
+
+        int ret = 0;
+        for(int i = 0; i < offsets.length; i++) {
+            if(shape[i] == 1)
+                continue;
+            ret += offsets[i] * strides[i];
+        }
+
+        return ret;
+    }
+
+    /**
+     *
+     * @param xs
+     * @param ys
+     * @return
+     */
+    public static int dotProduct(List<Integer> xs, List<Integer> ys) {
+        int result = 0;
+        int n = xs.size();
+
+        if (ys.size() != n)
+            throw new IllegalArgumentException("Different array sizes");
+
+        for (int i = 0; i < n; i++) {
+            result += xs.get(i) * ys.get(i);
+        }
+        return result;
+    }
+
+    /**
+     *
+     * @param xs
+     * @param ys
+     * @return
+     */
     public static int dotProduct(int[] xs, int[] ys) {
         int result = 0;
         int n = xs.length;
@@ -622,10 +724,6 @@ public class ArrayUtil {
         for (int j = 0; j < stride.length; j++) {
             stride[j] = st;
             st *= shape[j];
-        }
-
-        if(dimensions > 2 && shape[0] == 1) {
-            stride = ArrayUtil.reverseCopy(stride);
         }
 
         return stride;

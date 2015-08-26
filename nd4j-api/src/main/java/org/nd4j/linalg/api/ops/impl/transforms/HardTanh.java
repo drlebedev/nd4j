@@ -102,11 +102,11 @@ public class HardTanh extends BaseTransformOp {
         return new HardTanhDerivative(x, y, z, n);
     }
 
-    private float hardTanh(float num) {
-        return (float) hardTanh((double) num);
+    private static float hardTanh(float num) {
+    	return num < -1.0f ? -1.0f : num > 1.0f ? 1.0f : num;
     }
 
-    private double hardTanh(double num) {
+    private static double hardTanh(double num) {
         return num < -1.0 ? -1.0 : num > 1.0 ? 1.0 : num;
 
     }

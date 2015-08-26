@@ -13,6 +13,8 @@ import java.util.List;
 
 /**
  * Creates int arrays
+ * of a specified length
+ *
  *
  * @author Adam Gibson
  */
@@ -21,6 +23,11 @@ public class IntArrayCreation implements Implementation {
     private static TypePool typePool = TypePool.Default.ofClassPath();
     private static ArrayFactory factory = ArrayFactory.forType(typePool.describe("int").resolve());
 
+    /**
+     * Specify the length
+     * of the array to create
+     * @param length the length of the array to create
+     */
     public IntArrayCreation(int length) {
         this.length = length;
     }
@@ -36,6 +43,13 @@ public class IntArrayCreation implements Implementation {
     }
 
 
+    /**
+     * Creates te stack manipulation for an array
+     * of the given length
+     * @param length the length of the array
+     * @return the stack manipulation representing
+     * the array creation of the specified length
+     */
     public static StackManipulation intCreationOfLength(int length) {
         List<StackManipulation> manipulations = new ArrayList<>();
         for(int i = 0; i < length; i++)

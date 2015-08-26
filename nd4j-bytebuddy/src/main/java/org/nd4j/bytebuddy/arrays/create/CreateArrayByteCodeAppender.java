@@ -8,7 +8,8 @@ import net.bytebuddy.implementation.bytecode.member.MethodReturn;
 import net.bytebuddy.jar.asm.MethodVisitor;
 
 /**
- * Byte code appender for creating arrays of
+ * Byte code appender for creating
+ * arrays of
  * the specified length
  * @author Adam Gibson
  */
@@ -16,6 +17,8 @@ public class CreateArrayByteCodeAppender implements ByteCodeAppender {
     private int length = -1;
 
     public CreateArrayByteCodeAppender(int length) {
+        if(length < 0)
+            throw new IllegalArgumentException("Unable to create array of length " + length);
         this.length = length;
     }
 
@@ -26,6 +29,7 @@ public class CreateArrayByteCodeAppender implements ByteCodeAppender {
                 createArray,
                 MethodReturn.REFERENCE
         );
+
         StackManipulation.Size size1 = size.apply(methodVisitor, implementationContext);
         return new Size(size1.getMaximalSize(), instrumentedMethod.getStackSize());
 

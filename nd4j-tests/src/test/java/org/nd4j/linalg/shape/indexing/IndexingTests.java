@@ -1,11 +1,13 @@
 package org.nd4j.linalg.shape.indexing;
 
+import org.apache.commons.lang3.ArrayUtils;
 import org.junit.Test;
 import org.nd4j.linalg.BaseNd4jTest;
 import org.nd4j.linalg.api.ndarray.INDArray;
 import org.nd4j.linalg.factory.Nd4j;
 import org.nd4j.linalg.factory.Nd4jBackend;
 import org.nd4j.linalg.indexing.NDArrayIndex;
+import org.nd4j.linalg.indexing.SpecifiedIndex;
 
 /**
  * @author Adam Gibson
@@ -42,14 +44,24 @@ public class IndexingTests extends BaseNd4jTest  {
        */
 
         INDArray firstAssertion = Nd4j.create(new double[]{1,7});
-        INDArray firstTest = threeTwoTwo.get(new NDArrayIndex(0), new NDArrayIndex(0), NDArrayIndex.all());
+        INDArray firstTest = threeTwoTwo.get(NDArrayIndex.point(0), NDArrayIndex.point(0), NDArrayIndex.all());
         assertEquals(firstAssertion,firstTest);
         INDArray secondAssertion = Nd4j.create(new double[]{3,9});
-        INDArray secondTest = threeTwoTwo.get(new NDArrayIndex(2), new NDArrayIndex(0), NDArrayIndex.all());
+        INDArray secondTest = threeTwoTwo.get(NDArrayIndex.point(2), NDArrayIndex.point(0), NDArrayIndex.all());
         assertEquals(secondAssertion, secondTest);
 
 
 
+    }
+
+    @Test
+    public void testShape(){
+        INDArray ndarray = Nd4j.create(new float[][]{{1f,2f},{3f,4f}});
+        INDArray subarray = ndarray.get(NDArrayIndex.point(0),NDArrayIndex.all());
+        assertTrue(subarray.isRowVector());
+        int[] shape = subarray.shape();
+        assertEquals(shape[0],1);
+        assertEquals(shape[1],2);
     }
 
     @Test
@@ -60,7 +72,7 @@ public class IndexingTests extends BaseNd4jTest  {
                 {6, 9}
         });
 
-        INDArray test = arr.get(new NDArrayIndex(1, 3), new NDArrayIndex(1, 3));
+        INDArray test = arr.get(new SpecifiedIndex(1, 2), new SpecifiedIndex(1, 2));
         assertEquals(testAssertion, test);
 
     }
@@ -73,7 +85,7 @@ public class IndexingTests extends BaseNd4jTest  {
         });
 
         INDArray assertion = Nd4j.create(new double[]{5,7});
-        INDArray test = arr.get(NDArrayIndex.all(), new NDArrayIndex(0));
+        INDArray test = arr.get(NDArrayIndex.all(), NDArrayIndex.point(0));
         assertEquals(assertion,test);
     }
 

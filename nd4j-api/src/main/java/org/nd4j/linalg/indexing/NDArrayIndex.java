@@ -21,6 +21,7 @@ package org.nd4j.linalg.indexing;
 
 import com.google.common.primitives.Ints;
 import org.nd4j.linalg.api.ndarray.INDArray;
+import org.nd4j.linalg.api.shape.Shape;
 import org.nd4j.linalg.util.ArrayUtil;
 
 import java.util.ArrayList;
@@ -58,7 +59,7 @@ public class NDArrayIndex implements INDArrayIndex {
     public static INDArrayIndex[] indexesFor(int...shape) {
         INDArrayIndex[] ret = new INDArrayIndex[shape.length];
         for(int i = 0; i < shape.length; i++) {
-            ret[i] = new NDArrayIndex(shape[i]);
+            ret[i] = NDArrayIndex.point(shape[i]);
         }
 
         return ret;
@@ -257,7 +258,53 @@ public class NDArrayIndex implements INDArrayIndex {
                 ret++;
         return ret;
     }
+    /**
+     * Given an all index and
+     * the intended indexes, return an
+     * index array containing a combination of all elements
+     * for slicing and overriding particular indexes where necessary
+     * @param shape the index containing all elements
+     * @param intendedIndexes the indexes specified by the user
+     * @return the resolved indexes (containing all where nothing is specified, and the intended index
+     * for a particular dimension otherwise)
+     */
+    public static INDArrayIndex[] resolve(int[] shape, INDArrayIndex...intendedIndexes) {
+        /**
+         * If it's a vector and index asking for a scalar just return the array
+         */
+        if(intendedIndexes.length >= shape.length || Shape.isVector(shape) && intendedIndexes.length == 1) {
+            if(Shape.isRowVectorShape(shape) && intendedIndexes.length ==  1 && intendedIndexes[0] instanceof IntervalIndex) {
+                INDArrayIndex[] ret = new INDArrayIndex[2];
+                ret[0] = NDArrayIndex.point(0);
+                ret[1] = intendedIndexes[0];
+                return ret;
+            }
+            return intendedIndexes;
+        }
 
+        List<INDArrayIndex> retList = new ArrayList<>();
+        int numNewAxes = 0;
+
+        if(Shape.isMatrix(shape) && intendedIndexes.length == 1) {
+            retList.add(intendedIndexes[0]);
+            retList.add(NDArrayIndex.all());
+        }
+        else {
+            for(int i = 0; i < intendedIndexes.length; i++) {
+                retList.add(intendedIndexes[i]);
+                if(intendedIndexes[i] instanceof NewAxis)
+                    numNewAxes++;
+            }
+        }
+
+        int length = shape.length + numNewAxes;
+        //fill the rest with all
+        while(retList.size() < length)
+            retList.add(NDArrayIndex.all());
+
+
+        return retList.toArray(new INDArrayIndex[retList.size()]);
+    }
     /**
      * Given an all index and
      * the intended indexes, return an
@@ -269,19 +316,20 @@ public class NDArrayIndex implements INDArrayIndex {
      * for a particular dimension otherwise)
      */
     public static INDArrayIndex[] resolve(INDArrayIndex[] allIndex, INDArrayIndex...intendedIndexes) {
+
         int numNewAxes = numNewAxis(intendedIndexes);
         INDArrayIndex[] all = new INDArrayIndex[allIndex.length + numNewAxes];
         Arrays.fill(all,NDArrayIndex.all());
         for(int i = 0; i < allIndex.length; i++) {
             //collapse single length indexes in to point indexes
-            if(intendedIndexes[i] instanceof NDArrayIndex) {
+            if (i >= intendedIndexes.length) break;
+
+            if (intendedIndexes[i] instanceof NDArrayIndex) {
                 NDArrayIndex idx = (NDArrayIndex) intendedIndexes[i];
-                if(idx.indices.length == 1)
+                if (idx.indices.length == 1)
                     intendedIndexes[i] = new PointIndex(idx.indices[0]);
             }
-            if(i < intendedIndexes.length)
-                all[i] =  intendedIndexes[i];
-
+            all[i] = intendedIndexes[i];
         }
 
         return all;
@@ -541,6 +589,11 @@ public class NDArrayIndex implements INDArrayIndex {
 
     @Override
     public void init(int begin, int end) {
+
+    }
+
+    @Override
+    public void reset() {
 
     }
 

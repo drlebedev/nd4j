@@ -26,7 +26,13 @@ public class ByteBuddyIntArithmetic implements Implementation {
     private Operation op;
 
 
-
+    /**
+     * Initialize with 2 values
+     * and an operation to do on them
+     * @param val1
+     * @param val2
+     * @param op
+     */
     public ByteBuddyIntArithmetic(int val1,int val2,Operation op) {
         this.val1 = val1;
         this.val2 = val2;

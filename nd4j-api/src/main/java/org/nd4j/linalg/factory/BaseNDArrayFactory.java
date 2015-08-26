@@ -236,13 +236,14 @@ public abstract class BaseNDArrayFactory implements NDArrayFactory {
         int length = 0;
         for (INDArray m : matrices)
             length += m.length();
-
-        INDArray ret = Nd4j.create(length);
-        int count = 0;
-        for(INDArray arr : matrices) {
-            INDArray linear = arr.ravel();
-            for(int j = 0; j < linear.length(); j++)
-                ret.putScalar(count++,linear.getDouble(j));
+        INDArray ret = Nd4j.create(1, length);
+        int linearIndex = 0;
+        for (INDArray d : matrices) {
+            if (!d.isVector())
+                d = Nd4j.create(d.data(), new int[]{1, d.length()}, d.offset());
+            for (int i = 0; i < d.length(); i++) {
+                ret.putScalar(linearIndex++, d.getFloat(i));
+            }
         }
 
         return ret;
@@ -960,11 +961,10 @@ public abstract class BaseNDArrayFactory implements NDArrayFactory {
     public INDArray concat(int dimension, INDArray... toConcat) {
         if (toConcat.length == 1)
             return toConcat[0];
-        int rank = toConcat[0].rank();
         int sumAlongDim = 0;
 
         for (int i = 0; i < toConcat.length; i++) {
-            sumAlongDim += toConcat[i].shape()[dimension];
+            sumAlongDim += toConcat[i].size(dimension);
         }
 
         int[] outputShape = ArrayUtil.copy(toConcat[0].shape());
@@ -976,7 +976,7 @@ public abstract class BaseNDArrayFactory implements NDArrayFactory {
         if(ret.isVector()) {
             int offset = 0;
             for(INDArray arr : toConcat) {
-                for(int i = 0; i < arr.length(); i++) {
+                for(int i = 0; i < arr.size(dimension); i++) {
                     ret.putScalar(offset++,arr.getDouble(i));
                 }
             }
@@ -997,14 +997,16 @@ public abstract class BaseNDArrayFactory implements NDArrayFactory {
         int arrOffset = 0;
         for(INDArray arr : toConcat) {
             int arrTensorLength = -1;
+
             if(arr.tensorssAlongDimension(dimension) != ret.tensorssAlongDimension(dimension))
                 throw new IllegalStateException("Illegal concatenate. Tensors along dimension must be same length.");
+
             for(int i = 0; i < arr.tensorssAlongDimension(dimension); i++) {
-                INDArray retLinear = ret.tensorAlongDimension(i,dimension).linearView();
-                INDArray arrTensor = arr.tensorAlongDimension(i,dimension).linearView();
+                INDArray retLinear = ret.tensorAlongDimension(i, dimension);
+                INDArray arrTensor = arr.tensorAlongDimension(i, dimension);
                 arrTensorLength = arrTensor.length();
                 for(int j = 0; j < arrTensor.length(); j++) {
-                    int idx = j + (!arrTensor.isScalar() ? arrOffset : 0);
+                    int idx = j + arrOffset;
                     retLinear.putScalar(idx,arrTensor.getDouble(j));
                 }
 

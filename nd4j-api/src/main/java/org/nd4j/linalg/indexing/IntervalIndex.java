@@ -14,6 +14,7 @@ public class IntervalIndex implements INDArrayIndex {
     protected boolean inclusive;
     protected int stride = 1;
     protected int index = 0;
+    protected int length = 0;
     /**
      *
      * @param inclusive whether to include the last number
@@ -36,7 +37,7 @@ public class IntervalIndex implements INDArrayIndex {
 
     @Override
     public int length() {
-        return (end - begin) / stride;
+        return length;
     }
 
     @Override
@@ -51,7 +52,7 @@ public class IntervalIndex implements INDArrayIndex {
 
     @Override
     public boolean hasNext() {
-        return index < length();
+        return index < end();
     }
 
     @Override
@@ -83,7 +84,11 @@ public class IntervalIndex implements INDArrayIndex {
     @Override
     public void init(INDArray arr, int begin, int dimension) {
         this.begin = begin;
+        this.index = begin;
         this.end = inclusive ? arr.size(dimension) + 1 : arr.size(dimension);
+        for(int i = begin; i < end; i+= stride) {
+            length++;
+        }
     }
 
     @Override
@@ -94,7 +99,41 @@ public class IntervalIndex implements INDArrayIndex {
     @Override
     public void init(int begin, int end) {
         this.begin = begin;
+        this.index = begin;
         this.end = inclusive ? end + 1 : end;
+        for(int i = begin; i < end; i+= stride) {
+            length++;
+        }
 
+    }
+
+    @Override
+    public void reset() {
+
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (!(o instanceof IntervalIndex)) return false;
+
+        IntervalIndex that = (IntervalIndex) o;
+
+        if (begin != that.begin) return false;
+        if (end != that.end) return false;
+        if (inclusive != that.inclusive) return false;
+        if (stride != that.stride) return false;
+        return index == that.index;
+
+    }
+
+    @Override
+    public int hashCode() {
+        int result = begin;
+        result = 31 * result + end;
+        result = 31 * result + (inclusive ? 1 : 0);
+        result = 31 * result + stride;
+        result = 31 * result + index;
+        return result;
     }
 }

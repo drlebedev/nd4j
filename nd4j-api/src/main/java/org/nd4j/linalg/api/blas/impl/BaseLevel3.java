@@ -9,6 +9,7 @@ import org.nd4j.linalg.api.complex.IComplexNDArray;
 import org.nd4j.linalg.api.complex.IComplexNumber;
 import org.nd4j.linalg.api.ndarray.INDArray;
 import org.nd4j.linalg.factory.NDArrayFactory;
+import org.nd4j.linalg.util.ArrayUtil;
 
 /**
  * Base class for level 3 functions, abstract headers pulled from:
@@ -35,6 +36,7 @@ public abstract class BaseLevel3 extends BaseLevel implements Level3 {
     @Override
     public void gemm(char Order, char TransA, char TransB, double alpha, INDArray A, INDArray B, double beta, INDArray C) {
         GemmParams params = new GemmParams(A,B,C);
+
 
         if(A.data().dataType() == DataBuffer.Type.DOUBLE)
             dgemm(Order

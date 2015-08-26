@@ -46,7 +46,7 @@ public class ConcatTestsC extends BaseNd4jTest {
         INDArray col1 = arr2.getColumn(0);
         INDArray col2 = arr2.getColumn(1);
         INDArray vstacked = Nd4j.vstack(col1,col2);
-        assertEquals(Nd4j.create(2,5),vstacked);
+        assertEquals(Nd4j.create(10,1),vstacked);
 
 
 
@@ -96,6 +96,33 @@ public class ConcatTestsC extends BaseNd4jTest {
         ones.assign(tensor);
         assertEquals(tensor,ones);
     }
+    
+    @Test
+    public void testConcatColVectorAndMatrix() {
+      
+        INDArray colVector = Nd4j.create(new double[]{1, 2, 3, 1, 2, 3}, new int[]{6, 1});
+        INDArray matrix = Nd4j.create(new double[]{4, 5, 6, 4, 5, 6}, new int[]{2, 3});
+
+        INDArray assertion = Nd4j.create(new double[]{1, 2, 3, 1, 2, 3, 4, 5}, new int[]{8, 1});
+
+        INDArray concat = Nd4j.vstack(colVector, matrix);
+        assertEquals(assertion,concat);
+        
+    }
+
+    @Test
+    public void testConcatRowVectorAndMatrix() {
+
+        INDArray rowVector = Nd4j.create(new double[]{1, 2, 3, 1, 2, 3}, new int[]{1, 6});
+        INDArray matrix = Nd4j.create(new double[]{4, 5, 6, 4, 5, 6}, new int[]{3, 2});
+
+        INDArray assertion = Nd4j.create(new double[]{1, 2, 3, 1, 2, 3, 4, 5}, new int[]{1, 8});
+
+        INDArray concat = Nd4j.hstack(rowVector, matrix);
+        assertEquals(assertion, concat);
+      
+    }
+
 
     @Override
     public char ordering() {

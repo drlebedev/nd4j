@@ -281,6 +281,10 @@ public  class NDArrayTestsFortran  extends BaseNd4jTest {
         INDArray n = Nd4j.create(Nd4j.linspace(1, 30, 30).data(), new int[]{3, 5, 2});
         for(int i = 0; i < n.slices(); i++) {
             INDArray nSlice = n.slice(i);
+            for(int j = 0; j < nSlice.slices(); j++) {
+                INDArray sliceJ = nSlice.slice(j);
+                System.out.println(sliceJ);
+            }
             System.out.println(nSlice);
         }
         INDArray slice = n.swapAxes(2, 1);
@@ -1036,7 +1040,8 @@ public  class NDArrayTestsFortran  extends BaseNd4jTest {
     public void testRollAxis() {
         INDArray toRoll = Nd4j.ones(3,4,5,6);
         assertArrayEquals(new int[]{3,6,4,5},Nd4j.rollAxis(toRoll,3,1).shape());
-        assertArrayEquals(new int[]{5,3,4,6},Nd4j.rollAxis(toRoll,3).shape());
+        int[] shape = Nd4j.rollAxis(toRoll,3).shape();
+        assertArrayEquals(new int[]{6,3,4,5},shape);
     }
 
     @Test
