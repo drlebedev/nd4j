@@ -44,8 +44,6 @@ public class LossFunctions {
      * @param z                 the output function
      * @param l2                the l2 regularization term (0.5 * l2Coeff * sum w^2)
      * @param l1                the l1 regularization term (l1Coeff * sum |w|)
-     * @param l1Magnitude       the l1 magnitude
-     * @param l2Magnitude       the l2 magnitude
      * @param useRegularization whether to use regularization
      * @return the score for the given parameters
      */
@@ -88,7 +86,7 @@ public class LossFunctions {
                 break;
             case MCXENT:
                 INDArray sums = log(z);
-                INDArray columnSums = labels.mul(log(sums));
+                INDArray columnSums = labels.mul(sums);
                 ret = -columnSums.sumNumber().doubleValue();
                 break;
             case XENT:
@@ -116,7 +114,7 @@ public class LossFunctions {
                 break;
             case NEGATIVELOGLIKELIHOOD:
                 INDArray sums2 = log(z);
-                INDArray columnSums2 = labels.mul(log(sums2));
+                INDArray columnSums2 = labels.mul(sums2);
                 ret = -columnSums2.sumNumber().doubleValue();
                 break;
 

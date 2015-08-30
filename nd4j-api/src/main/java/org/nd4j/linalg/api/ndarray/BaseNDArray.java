@@ -105,6 +105,7 @@ public abstract class BaseNDArray implements INDArray {
     protected Boolean isScalar = null;
     protected boolean isWrapAround = false;
     protected int linearStride = -1;
+    protected int elementWiseStride = -1;
 
     public BaseNDArray() {
     }
@@ -635,7 +636,6 @@ public abstract class BaseNDArray implements INDArray {
 
     @Override
     public INDArray linearViewColumnOrder() {
-
         return create(data, new int[]{length, 1}, offset());
     }
 
@@ -656,7 +656,6 @@ public abstract class BaseNDArray implements INDArray {
      */
     @Override
     public INDArray linearView() {
-
         return this;
     }
 
@@ -665,7 +664,12 @@ public abstract class BaseNDArray implements INDArray {
 
     }
 
-
+    @Override
+    public int elementWiseStride() {
+        if(elementWiseStride < 0)
+            elementWiseStride = reshape(1,length()).stride(-1);
+        return elementWiseStride;
+    }
 
     @Override
     public int elementStride() {
@@ -1132,7 +1136,6 @@ public abstract class BaseNDArray implements INDArray {
      */
     @Override
     public INDArray epsi(INDArray other) {
-
         Nd4j.getExecutioner().exec(new Eps(linearView(), other.linearView(), this, length()));
         return this;
     }
@@ -1168,7 +1171,6 @@ public abstract class BaseNDArray implements INDArray {
 
     @Override
     public INDArray gti(Number other) {
-
         Nd4j.getExecutioner().exec(new ScalarGreaterThan(linearView(), other));
         return this;
     }
@@ -1180,7 +1182,6 @@ public abstract class BaseNDArray implements INDArray {
 
     @Override
     public INDArray lti(INDArray other) {
-
         Nd4j.getExecutioner().exec(new LessThan(linearView(), other, linearView(), length()));
         return this;
     }
@@ -1192,7 +1193,6 @@ public abstract class BaseNDArray implements INDArray {
 
     @Override
     public INDArray neqi(Number other) {
-
         Nd4j.getExecutioner().exec(new ScalarNotEquals(linearView(), other));
         return this;
     }
@@ -1204,7 +1204,6 @@ public abstract class BaseNDArray implements INDArray {
 
     @Override
     public INDArray neqi(INDArray other) {
-
         Nd4j.getExecutioner().exec(new NotEqualTo(linearView(), other.linearView(), linearView(), length()));
         return this;
     }
@@ -1216,7 +1215,6 @@ public abstract class BaseNDArray implements INDArray {
 
     @Override
     public INDArray eqi(INDArray other) {
-
         Nd4j.getExecutioner().exec(new EqualTo(linearView(), other.linearView(), linearView(), length()));
         return this;
     }
@@ -1228,7 +1226,6 @@ public abstract class BaseNDArray implements INDArray {
 
     @Override
     public INDArray gti(INDArray other) {
-
         Nd4j.getExecutioner().exec(new GreaterThan(linearView(), other.linearView(), linearView(), length()));
         return this;
     }
@@ -1246,7 +1243,6 @@ public abstract class BaseNDArray implements INDArray {
      */
     @Override
     public INDArray negi() {
-
         Nd4j.getExecutioner().exec(new Negative(linearView()));
         return this;
     }
@@ -3684,12 +3680,11 @@ public abstract class BaseNDArray implements INDArray {
             INDArray ret = create(shape);
             int count = 0;
             if(isVector()) {
+                indexes[0].reset();
                 while(indexes[0].hasNext()) {
                     ret.putScalar(count++,getDouble(indexes[0].next()));
                 }
 
-                //reset the index to be used elsewhere
-                indexes[0].reset();
             }
             else {
                 while(indexes[0].hasNext()) {
@@ -3697,10 +3692,11 @@ public abstract class BaseNDArray implements INDArray {
                     INDArray next = slice(nextIdx);
                     if(indexes.length > 1)
                         ret.putSlice(count++,next.get(Arrays.copyOfRange(indexes, 1, indexes.length)));
-                    else {
+                    else if(next.isVector())
+                        ret.putSlice(count++,next);
+                    else
                         ret.putSlice(count++, next.get(indexes));
-                        indexes[0].reset();
-                    }
+
 
                 }
             }
