@@ -117,7 +117,7 @@ public abstract class BaseNDArray implements INDArray {
      */
     public BaseNDArray(DataBuffer buffer) {
         this.data = buffer;
-        init(new int[]{1, (int) buffer.length()});
+        init(new int[]{1, buffer.length()});
     }
 
     /**
@@ -678,37 +678,8 @@ public abstract class BaseNDArray implements INDArray {
 
     @Override
     public int majorStride() {
-
-        if(stride.length == 0) {
-            majorStride = elementStride();
-            return elementStride();
-        }
-
-        if(ordering() == NDArrayFactory.C) {
-            if(stride[shape().length - 1] == 1 && !isMatrix() || Shape.isRowVectorShape(shape())) {
-                int ret =  getFirstNonOneStride();
-                majorStride = ret;
-                return ret;
-            }
-
-        }
-
-        if(ordering() == NDArrayFactory.FORTRAN && size(0) == 1) {
-            int ret =  getFirstNonOneStride();
-            majorStride = ret;
-            return ret;
-        }
-
-        if(rank() > 2 && (size(0) == length() && getTrailingOnes() > 0  || getLeadingOnes() > 0 && !isVector())) {
-            return elementStride();
-        }
-
-
-
-
-        int majorStride = stride(0);
-        this.majorStride = majorStride;
-        return majorStride;
+        setLinearStride();
+        return stride(-1);
     }
 
     @Override
@@ -1391,20 +1362,7 @@ public abstract class BaseNDArray implements INDArray {
      */
     @Override
     public double getDouble(int... indices) {
-        int offset = 0;
-        for(int i = 0; i < indices.length; i++) {
-            /**
-             * See:
-             * http://docs.scipy.org/doc/numpy/reference/arrays.ndarray.html
-             * Basically if the size(i) is 1, the stride shouldn't be counted.
-             */
-            if(size(i) == 1)
-                continue;
-            offset += indices[i] * stride(i);
-        }
-
-
-        return data.getDouble(offset + this.offset);
+        return Shape.getDouble(this,indices);
     }
 
     /**
@@ -1752,8 +1710,8 @@ public abstract class BaseNDArray implements INDArray {
             return create(Nd4j.createBuffer(shape));
         if (offsets.length != n)
             throw new IllegalArgumentException("Invalid offset " + Arrays.toString(offsets));
-        if (shape.length != n)
-            throw new IllegalArgumentException("Invalid shape " + Arrays.toString(shape));
+        if (stride.length != n)
+            throw new IllegalArgumentException("Invalid stride " + Arrays.toString(stride));
 
         if (Arrays.equals(shape, this.shape)) {
             if (ArrayUtil.isZero(offsets)) {
@@ -1763,19 +1721,15 @@ public abstract class BaseNDArray implements INDArray {
             }
         }
 
-        //handle strides/offsets < rank
-        if(offsets.length != stride.length)
-            throw new IllegalStateException("Offsets and stride must be same length");
-        if(offset >= data().length())
+        if (offset >= data().length())
             offset = ArrayUtil.sum(offsets);
 
         return create(
                 data
                 , Arrays.copyOf(shape, shape.length)
-                ,stride
+                , stride
                 , offset, ordering
         );
-
     }
 
     @Override
@@ -1786,8 +1740,8 @@ public abstract class BaseNDArray implements INDArray {
             return create(Nd4j.createBuffer(shape));
         if (offsets.length != n)
             throw new IllegalArgumentException("Invalid offset " + Arrays.toString(offsets));
-        if (shape.length != n)
-            throw new IllegalArgumentException("Invalid shape " + Arrays.toString(shape));
+        if (stride.length != n)
+            throw new IllegalArgumentException("Invalid stride " + Arrays.toString(stride));
 
         if (Arrays.equals(shape, this.shape)) {
             if (ArrayUtil.isZero(offsets)) {
@@ -1797,35 +1751,19 @@ public abstract class BaseNDArray implements INDArray {
             }
         }
 
-        //handle strides/offsets < rank
-        if(offsets.length != stride.length)
-            throw new IllegalStateException("Offsets and stride must be same length");
         int[] dotProductOffsets = offsets;
         int[] dotProductStride = stride;
 
-        int offset = this.offset + NDArrayIndex.offset(dotProductStride,dotProductOffsets);
-        if(offset >= data().length())
+        int offset = this.offset + NDArrayIndex.offset(dotProductStride, dotProductOffsets);
+        if (offset >= data().length())
             offset = ArrayUtil.sum(offsets);
 
-
-        if(ordering() == NDArrayFactory.C ) {
-            return create(
-                    data
-                    , Arrays.copyOf(shape, shape.length)
-                    ,stride
-                    , offset, ordering
-            );
-        }
-        else if(ordering() == NDArrayFactory.FORTRAN) {
-            return create(
-                    data
-                    , Arrays.copyOf(shape, shape.length)
-                    , stride
-                    , offset, ordering
-            );
-        }
-        throw new IllegalStateException("Illegal ordering");
-
+        return create(
+                data
+                , Arrays.copyOf(shape, shape.length)
+                , stride
+                , offset, ordering
+        );
     }
 
     protected INDArray create(DataBuffer buffer) {
@@ -2855,9 +2793,7 @@ public abstract class BaseNDArray implements INDArray {
         if(linearStride >= 0)
             return;
 
-
-        linearStride = majorStride();
-
+        linearStride = ArrayUtil.prod(reshape(1,length()).stride());
     }
 
 
@@ -2948,18 +2884,6 @@ public abstract class BaseNDArray implements INDArray {
         return numLeadingOnes;
     }
 
-
-    protected int calcoffset(int index) {
-        if(getLeadingOnes() > 0 || getTrailingOnes() > 0 && rank() > 2) {
-            if(getLeadingOnes() > 0 && getTrailingOnes() > 0  && rank() > 2) {
-                return offset + index;
-            }
-            else if(rank() > 2)
-                return offset + index * elementStride();
-
-        }
-        return offset + index * majorStride();
-    }
 
 
     /**

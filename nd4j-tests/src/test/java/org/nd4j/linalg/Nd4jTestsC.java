@@ -33,6 +33,7 @@ import org.nd4j.linalg.factory.Nd4jBackend;
 import org.nd4j.linalg.indexing.NDArrayIndex;
 import org.nd4j.linalg.ops.transforms.Transforms;
 import org.nd4j.linalg.api.shape.Shape;
+import org.nd4j.linalg.util.ArrayUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -102,6 +103,38 @@ public  class Nd4jTestsC extends BaseNd4jTest {
 
 
     @Test
+    public void testTensorAlongDimension(){
+        int[] shape = new int[]{4,5,7};
+        int length = ArrayUtil.prod(shape);
+        INDArray arr = Nd4j.linspace(1,length,length).reshape(shape);
+
+
+        int[] dim0s = {0,1,2,0,1,2};
+        int[] dim1s = {1,0,0,2,2,1};
+
+        double[] sums = {1350.,  1350.,  1582,  1582,  630,  630};
+
+        for( int i = 0; i < dim0s.length; i++ ) {
+            int firstDim = dim0s[i];
+            int secondDim = dim1s[i];
+            INDArray tad = arr.tensorAlongDimension(0, firstDim, secondDim);
+            assertEquals(sums[i],tad.sumNumber().doubleValue(),1e-1);
+            char order = tad.ordering();
+            int[] stride = tad.stride();
+
+//          System.out.println("tensorAlongDimension(0," + firstDim + "," + secondDim + ")");
+//          System.out.println(tad);
+//          System.out.println("Order: " + order);
+//          System.out.println("Shape: " + Arrays.toString(tad.shape()));
+//          System.out.println("Stride: " + Arrays.toString(stride));
+//          System.out.println();
+
+        }
+    }
+
+
+
+    @Test
     public void testGetDouble() {
         INDArray n2 = Nd4j.create(Nd4j.linspace(1, 30, 30).data(), new int[]{3, 5, 2});
         INDArray swapped = n2.swapAxes(n2.shape().length - 1, 1);
@@ -125,7 +158,7 @@ public  class Nd4jTestsC extends BaseNd4jTest {
     @Test
     public void test2dMatrixOrderingSwitch() throws Exception {
         char order = Nd4j.order();
-        INDArray c = Nd4j.create(new double[][]{{1,2},{3,4}},'c');
+        INDArray c = Nd4j.create(new double[][]{{1, 2}, {3, 4}}, 'c');
         assertEquals('c', c.ordering());
         assertEquals(order,Nd4j.order().charValue());
         INDArray f = Nd4j.create(new double[][]{{1, 2}, {3, 4}}, 'f');
@@ -648,7 +681,7 @@ public  class Nd4jTestsC extends BaseNd4jTest {
 
         INDArray n = Nd4j.create(Nd4j.linspace(1, 4, 4).data(), new int[]{2, 2});
         INDArray column23 = n.getColumn(0);
-        INDArray column12 = Nd4j.create(new double[]{1, 3}, new int[]{1,2});
+        INDArray column12 = Nd4j.create(new double[]{1, 3}, new int[]{1, 2});
         assertEquals(column23, column12);
 
 
@@ -765,7 +798,70 @@ public  class Nd4jTestsC extends BaseNd4jTest {
 
     }
 
+    @Test
+    public void testTADMMul(){
+        Nd4j.getRandom().setSeed(12345);
+        int[] shape = new int[]{4,5,7};
+        INDArray arr = Nd4j.rand(shape);
 
+        INDArray tad = arr.tensorAlongDimension(0,1,2);
+        assertArrayEquals(tad.shape(),new int[]{7,5});
+
+
+        INDArray copy = Nd4j.zeros(7,5);
+        for( int i=0; i<7; i++ ){
+            for( int j=0; j<5; j++ ){
+                copy.putScalar(new int[]{i,j},tad.getDouble(i,j));
+            }
+        }
+
+//        System.out.println(tad);
+//        System.out.println("\n");
+//        System.out.println(copy);
+
+        assertTrue(tad.equals(copy));
+
+        INDArray first = Nd4j.rand(new int[]{2,7});
+        INDArray mmul = first.mmul(tad);
+        INDArray mmulCopy = first.mmul(copy);
+
+        assertTrue(mmul.equals(mmulCopy));
+
+        INDArray mmul2 = tad.mmul(first);
+        INDArray mmul2copy = copy.mmul(first);
+        assertTrue(mmul2.equals(mmul2copy));
+    }
+
+    @Test
+    public void testTADMMulLeadingOne(){
+        Nd4j.getRandom().setSeed(12345);
+        int[] shape = new int[]{1,5,7};
+        INDArray arr = Nd4j.rand(shape);
+
+        INDArray tad = arr.tensorAlongDimension(0, 1, 2);
+        boolean order = Shape.cOrFortranOrder(tad.shape(),tad.stride(),tad.elementStride());
+        assertArrayEquals(tad.shape(),new int[]{7,5});
+
+
+        INDArray copy = Nd4j.zeros(7,5);
+        for( int i = 0; i < 7; i++ ){
+            for( int j = 0; j < 5; j++ ){
+                copy.putScalar(new int[]{i,j},tad.getDouble(i,j));
+            }
+        }
+
+        assertTrue(tad.equals(copy));
+
+        INDArray first = Nd4j.rand(new int[]{2,7});
+        INDArray mmul = first.mmul(tad);
+        INDArray mmulCopy = first.mmul(copy);
+
+        assertTrue(mmul.equals(mmulCopy));
+
+        INDArray mmul2 = tad.mmul(first);
+        INDArray mmul2copy = copy.mmul(first);
+        assertTrue(mmul2.equals(mmul2copy));
+    }
 
 
     @Test
@@ -776,6 +872,69 @@ public  class Nd4jTestsC extends BaseNd4jTest {
         assertEquals(assertion, sum);
         INDArray sum0 = Nd4j.create(new double[]{4,6});
         assertEquals(sum0,test.sum(0));
+    }
+
+
+    @Test
+    public void testGetIntervalEdgeCase(){
+        Nd4j.getRandom().setSeed(12345);
+
+        int[] shape = {3,2,4};
+        INDArray arr3d = Nd4j.rand(shape);
+
+        INDArray get0 = arr3d.get(NDArrayIndex.all(),NDArrayIndex.all(),NDArrayIndex.interval(0,1));
+        INDArray getPoint0 = arr3d.get(NDArrayIndex.all(),NDArrayIndex.all(),NDArrayIndex.point(0));
+        INDArray tad0 = arr3d.tensorAlongDimension(0,1,0);
+
+        assertTrue(get0.equals(getPoint0)); //OK
+        assertTrue(get0.equals(tad0));      //OK
+
+        INDArray get1 = arr3d.get(NDArrayIndex.all(),NDArrayIndex.all(),NDArrayIndex.interval(1,2));
+        INDArray getPoint1 = arr3d.get(NDArrayIndex.all(),NDArrayIndex.all(),NDArrayIndex.point(1));
+        INDArray tad1 = arr3d.tensorAlongDimension(1,1,0);
+
+        assertTrue(getPoint1.equals(tad1)); //OK
+        assertTrue(get1.equals(getPoint1)); //Fails
+        assertTrue(get1.equals(tad1));
+
+        INDArray get2 = arr3d.get(NDArrayIndex.all(),NDArrayIndex.all(),NDArrayIndex.interval(2,3));
+        INDArray getPoint2 = arr3d.get(NDArrayIndex.all(),NDArrayIndex.all(),NDArrayIndex.point(2));
+        INDArray tad2 = arr3d.tensorAlongDimension(2,1,0);
+
+        assertTrue(getPoint2.equals(tad2)); //OK
+        assertTrue(get2.equals(getPoint2)); //Fails
+        assertTrue(get2.equals(tad2));
+
+        INDArray get3 = arr3d.get(NDArrayIndex.all(),NDArrayIndex.all(),NDArrayIndex.interval(3,4));
+        INDArray getPoint3 = arr3d.get(NDArrayIndex.all(),NDArrayIndex.all(),NDArrayIndex.point(3));
+        INDArray tad3 = arr3d.tensorAlongDimension(3,1,0);
+
+        assertTrue(getPoint3.equals(tad3)); //OK
+        assertTrue(get3.equals(getPoint3)); //Fails
+        assertTrue(get3.equals(tad3));
+    }
+
+
+    @Test
+    public void testGetIntervalEdgeCase2(){
+        Nd4j.getRandom().setSeed(12345);
+
+        int[] shape = {3,2,4};
+        INDArray arr3d = Nd4j.rand(shape);
+
+        for(int x = 0; x < 4; x++) {
+            INDArray getInterval = arr3d.get(NDArrayIndex.all(),NDArrayIndex.all(),NDArrayIndex.interval(x,x + 1));   //3d
+            INDArray getPoint = arr3d.get(NDArrayIndex.all(),NDArrayIndex.all(),NDArrayIndex.point(x));             //2d
+            INDArray tad = arr3d.tensorAlongDimension(x,1,0);                                                       //2d
+
+            assertTrue(getPoint.equals(tad));   //OK, comparing 2d with 2d
+            assertArrayEquals(getInterval.shape(),new int[]{3,2,1});
+            for( int i = 0; i < 3; i++ ){
+                for( int j = 0; j < 2; j++ ){
+                    assertEquals(getInterval.getDouble(i,j,0) , getPoint.getDouble(i,j),1e-1);
+                }
+            }
+        }
     }
 
 
