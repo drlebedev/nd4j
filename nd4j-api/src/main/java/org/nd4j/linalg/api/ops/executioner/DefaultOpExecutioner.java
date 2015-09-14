@@ -123,9 +123,19 @@ public class DefaultOpExecutioner implements OpExecutioner {
             }
 
 
+            else if(!(op.x() instanceof IComplexNDArray)) {
+                INDArray xLinear = op.x().reshape(1,op.x().length());
+                for(int i = 0; i < op.n(); i++) {
+                    accumulation.update(op.op(xLinear.getDouble(0,i)));
+                }
+            }
+
+
+
             else {
-                for (int c = 0; c < op.n(); c++)
+                for (int c = 0; c < op.n(); c++) {
                     apply(accumulation, c);
+                }
             }
 
         }
@@ -533,6 +543,10 @@ public class DefaultOpExecutioner implements OpExecutioner {
         }
 
     }
+
+
+
+
 
     private void apply(Accumulation op, int x) {
         if(op.isPassThrough())
