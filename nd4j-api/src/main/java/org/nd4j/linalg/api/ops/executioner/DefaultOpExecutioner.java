@@ -31,6 +31,7 @@ import org.nd4j.linalg.api.ops.Op;
 import org.nd4j.linalg.api.ops.ScalarOp;
 import org.nd4j.linalg.api.ops.TransformOp;
 import org.nd4j.linalg.api.shape.Shape;
+import org.nd4j.linalg.api.shape.loop.coordinatefunction.CoordinateFunction;
 import org.nd4j.linalg.factory.Nd4j;
 import org.nd4j.linalg.util.ArrayUtil;
 
@@ -55,7 +56,7 @@ public class DefaultOpExecutioner implements OpExecutioner {
             return op;
         }
         if (op instanceof TransformOp) {
-            TransformOp t = (TransformOp) op;
+            final TransformOp t = (TransformOp) op;
             //make assumption x and z are same type
             if (!op.x().getClass().equals(t.z().getClass()) && !(op.x() instanceof LinearViewNDArray) && !(t.z() instanceof LinearViewNDArray))
                 throw new IllegalArgumentException("Illegal operation. Origin and output ndarray must be same types. op.x was " + op.x().getClass().getName() + " while t.z was " + t.z().getClass().getName());
@@ -93,6 +94,26 @@ public class DefaultOpExecutioner implements OpExecutioner {
                     op.z().data().put(op.z().offset() + c * zStride, op.op(op.x().data().getDouble(op.x().offset() + c * xStride)));
             }
 */
+
+            else if(op.y() != null) {
+                if(Arrays.equals(op.x().shape(),op.y().shape())) {
+                    Shape.iterate(op.x(), new CoordinateFunction() {
+                        @Override
+                        public void process(int[]... coord) {
+                            apply(t,coord[0],coord[0]);
+                        }
+                    });
+                }
+                else
+                    Shape.iterate(op.x(), op.y(), new CoordinateFunction() {
+                        @Override
+                        public void process(int[]... coord) {
+                            apply(t,coord[0],coord[1]);
+                        }
+                    });
+
+            }
+
             else {
                 NdIndexIterator iter = new NdIndexIterator(op.x().shape());
                 for (int c = 0; c < op.n(); c++) {
@@ -433,12 +454,59 @@ public class DefaultOpExecutioner implements OpExecutioner {
         else {
             INDArray ret = Nd4j.create(retShape);
             INDArray linear = ret;
-            for (int i = 0; i < op.x().tensorssAlongDimension(dimension); i++) {
-                Op op2 = op.opForDimension(i, dimension);
-                double result = execAndReturn((Accumulation) op2).currentResult().doubleValue();
-                linear.putScalar(i, result);
+            INDArray opArr;
+            INDArray arr = op.x();
+            int axis = dimension[0];
+        /*
+         * We need to permute the array so that axis is placed at the end.
+         * And all other dimensions are shifted left.
+          */
+            if (dimension[0] != arr.rank() - 1) {
+                int[] newaxes = new int[arr.rank()];
+                int j;
+
+                for (j = 0; j < axis; j++) {
+                    newaxes[j] = j;
+                }
+
+                for (j = axis; j < arr.rank() - 1; j++) {
+                    newaxes[j] = j + 1;
+                }
+
+                newaxes[newaxes.length - 1] = axis;
+                opArr = arr.permute(newaxes);
 
             }
+            else {
+                opArr = arr;
+            }
+
+            int m =  opArr.size(-1);
+            int n = arr.length() / m;
+            int[] shape = {1,m};
+            int[] strides =  Nd4j.getStrides(shape,op.x().ordering());
+            //need to retain strides for column vectors
+            if(opArr.isMatrix() && dimension.length == 1 && dimension[0] == 0) {
+                for (int i = 0; i < op.x().tensorssAlongDimension(dimension); i++) {
+                    Op op2 = op.opForDimension(i, dimension);
+                    double result = execAndReturn((Accumulation) op2).currentResult().doubleValue();
+                    linear.putScalar(i, result);
+
+                }
+
+                return linear;
+            }
+            else {
+                for (int ip = 0, i = 0; i < n; i++, ip +=  m) {
+                    INDArray maxAlong = Nd4j.create(arr.data(),shape,strides,ip);
+                    op.setX(maxAlong);
+                    double result = execAndReturn(op).currentResult().doubleValue();
+                    ret.putScalar(i,result);
+                    op.setCurrentResult(op.zero());
+                }
+
+            }
+
 
             return ret;
         }
@@ -494,6 +562,55 @@ public class DefaultOpExecutioner implements OpExecutioner {
     public void setExecutionMode(ExecutionMode executionMode) {
         this.executionMode = executionMode;
     }
+    //apply a pairwise op to x and store the result
+    private void apply(TransformOp op, int[] c,int[] c2) {
+        if(op.isPassThrough())
+            return;
+        if (op.y() != null) {
+            //x is complex, y could be complex or real
+            if (op.x() instanceof IComplexNDArray) {
+                IComplexNDArray complexX = (IComplexNDArray) op.x();
+                IComplexNDArray complexZ = (IComplexNDArray) op.z();
+
+                IComplexNumber curr = complexX.getComplex(c);
+                if (op.y() instanceof IComplexNDArray) {
+                    IComplexNDArray complexY = (IComplexNDArray) op.y();
+                    complexZ.putScalar(c, op.op(curr, complexY.getComplex(c)));
+                } else
+                    complexZ.putScalar(c, op.op(curr, op.y().getDouble(c)));
+            }
+            //x is real
+            else {
+                INDArray zLinear = op.z();
+                INDArray xLinear = op.x();
+                INDArray yLinear = op.y();
+                zLinear.putScalar(c, op.op(xLinear.getDouble(c),yLinear.getDouble(c2)));
+
+            }
+
+        }
+
+        else {
+
+            //x is complex, y could be complex or real
+            if (op.x() instanceof IComplexNDArray) {
+                IComplexNDArray complexX = (IComplexNDArray) op.x();
+                IComplexNDArray complexZ = (IComplexNDArray) op.z();
+
+                if (op.y() instanceof IComplexNDArray)
+                    complexZ.putScalar(c, op.op(complexX.getComplex(c)));
+
+                else
+                    complexZ.putScalar(c, op.op(complexX.getComplex(c)));
+            }
+            //x is real
+            else
+                op.z().putScalar(c, op.op(op.x().getDouble(c)));
+        }
+
+    }
+
+
 
 
     //apply a pairwise op to x and store the result

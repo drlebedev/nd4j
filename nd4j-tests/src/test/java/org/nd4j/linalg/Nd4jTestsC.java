@@ -20,6 +20,7 @@
 package org.nd4j.linalg;
 
 
+import org.apache.commons.math3.util.Pair;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
@@ -97,10 +98,10 @@ public  class Nd4jTestsC extends BaseNd4jTest {
 
     @Test
     public void testShuffle() {
-        INDArray arr = Nd4j.rand(6,6);
+        INDArray arr = Nd4j.rand(6, 6);
         INDArray dup = arr.dup();
         Nd4j.shuffle(arr,0);
-        assertNotEquals(arr,dup);
+        assertNotEquals(arr, dup);
     }
 
 
@@ -116,7 +117,7 @@ public  class Nd4jTestsC extends BaseNd4jTest {
         n.checkDimensions(n.divi(Nd4j.scalar(1.0d)));
 
         n = Nd4j.create(Nd4j.ones(27).data(), new int[]{3, 3, 3});
-        assertEquals(getFailureMessage(),27, n.sumNumber().doubleValue(), 1e-1);
+        assertEquals(getFailureMessage(), 27, n.sumNumber().doubleValue(), 1e-1);
         INDArray a = n.slice(2);
         assertEquals(getFailureMessage(), true, Arrays.equals(new int[]{3, 3}, a.shape()));
 
@@ -139,7 +140,7 @@ public  class Nd4jTestsC extends BaseNd4jTest {
             int firstDim = dim0s[i];
             int secondDim = dim1s[i];
             INDArray tad = arr.tensorAlongDimension(0, firstDim, secondDim);
-            assertEquals(sums[i],tad.sumNumber().doubleValue(),1e-1);
+            assertEquals("I " + i + " failed ",sums[i],tad.sumNumber().doubleValue(),1e-1);
             char order = tad.ordering();
             int[] stride = tad.stride();
 
@@ -1541,9 +1542,19 @@ public  class Nd4jTestsC extends BaseNd4jTest {
 
     }
 
+    @Test
+    public void testTemp(){
+        Nd4j.getRandom().setSeed(12345);
+        INDArray in = Nd4j.rand(new int[]{2, 2, 2});
+        System.out.println("In:\n" + in);
+        INDArray permuted = in.permute(0,2,1);    //Permute, so we get correct order after reshaping
+        INDArray out = permuted.reshape(4, 2);
+        System.out.println("Out:\n" + out);
 
-
-
+        int countZero = 0;
+        for( int i=0; i<8; i++ ) if(out.getDouble(i) == 0.0 ) countZero++;
+        assertEquals(countZero, 0);
+    }
 
 
     @Test
@@ -1590,7 +1601,7 @@ public  class Nd4jTestsC extends BaseNd4jTest {
         INDArray concat = Nd4j.concat(0, A, B);
         assertTrue(Arrays.equals(new int[]{5, 2, 2}, concat.shape()));
 
-        INDArray columnConcat = Nd4j.linspace(1,6,6).reshape(2, 3);
+        INDArray columnConcat = Nd4j.linspace(1,6, 6).reshape(2, 3);
         INDArray concatWith = Nd4j.zeros(2, 3);
         INDArray columnWiseConcat = Nd4j.concat(0, columnConcat, concatWith);
         System.out.println(columnConcat);
@@ -1829,6 +1840,25 @@ public  class Nd4jTestsC extends BaseNd4jTest {
 
         assertEquals(fc,ff);
         assertEquals(fc,fmixed);
+    }
+
+
+    @Test
+    public void testDupWithOrder(){
+        List<Pair<INDArray,String>> testInputs = CheckUtil.getAllTestMatricesWithShape(4,5,123);
+
+        for(Pair<INDArray,String> pair : testInputs ){
+
+            String msg = pair.getSecond();
+            INDArray in = pair.getFirst();
+            INDArray dupc = in.dup('c');
+            INDArray dupf = in.dup('f');
+
+            assertEquals(dupc.ordering(),'c');
+            assertEquals(dupf.ordering(),'f');
+            assertEquals(msg,in,dupc);
+            assertEquals(msg,in,dupf);
+        }
     }
 
 
