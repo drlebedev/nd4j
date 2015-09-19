@@ -497,7 +497,7 @@ public class DefaultOpExecutioner implements OpExecutioner {
                 return linear;
             }
             else {
-                for (int ip = 0, i = 0; i < n; i++, ip +=  m) {
+                for (int ip = 0, i = 0; i < ret.length(); i++, ip +=  m) {
                     INDArray maxAlong = Nd4j.create(arr.data(),shape,strides,ip);
                     op.setX(maxAlong);
                     double result = execAndReturn(op).currentResult().doubleValue();
@@ -516,17 +516,18 @@ public class DefaultOpExecutioner implements OpExecutioner {
 
 
     @Override
-    public INDArray execAndReturn(TransformOp op, int...dimension) {
+    public INDArray execAndReturn(final TransformOp op, int...dimension) {
         if(dimension.length == op.x().rank())
             dimension = new int[] {Integer.MAX_VALUE};
         if(dimension.length == 1)
             return execAndReturnVector(op,dimension[0]);
         else {
-            for (int i = 0; i < op.x().tensorssAlongDimension(dimension); i++) {
-                Op op2 = op.opForDimension(i, dimension);
-                exec(op2);
-                op.z().tensorAlongDimension(i, dimension).assign(op2.z());
-            }
+         Shape.iterate(op.x(), new CoordinateFunction() {
+             @Override
+             public void process(int[]... coord) {
+                 apply(op,coord[0],coord[0]);
+             }
+         });
 
             return op.z();
 

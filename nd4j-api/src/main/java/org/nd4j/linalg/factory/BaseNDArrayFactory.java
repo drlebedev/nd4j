@@ -890,8 +890,20 @@ public abstract class BaseNDArrayFactory implements NDArrayFactory {
      */
     @Override
     public INDArray valueArrayOf(int[] shape, double value) {
-        INDArray create = create(shape);
-        create.assign(value);
+        INDArray create = null;
+        if(Nd4j.dataType() == DataBuffer.Type.DOUBLE) {
+            double[] vals = new double[ArrayUtil.prod(shape)];
+            if(value != 0.0)
+                Arrays.fill(vals,value);
+            create = Nd4j.create(vals,shape);
+        }
+        else if(Nd4j.dataType() == DataBuffer.Type.FLOAT) {
+            float[] vals = new float[ArrayUtil.prod(shape)];
+            if(value != 0.0)
+                Arrays.fill(vals,(float) value);
+            create = Nd4j.create(vals,shape);
+        }
+
         return create;
     }
 
@@ -1019,7 +1031,6 @@ public abstract class BaseNDArrayFactory implements NDArrayFactory {
 
 
 
-
         int arrOffset = 0;
         for(INDArray arr : toConcat) {
             int arrTensorLength = -1;
@@ -1027,9 +1038,11 @@ public abstract class BaseNDArrayFactory implements NDArrayFactory {
             if(arr.tensorssAlongDimension(dimension) != ret.tensorssAlongDimension(dimension))
                 throw new IllegalStateException("Illegal concatenate. Tensors along dimension must be same length.");
 
+
             for(int i = 0; i < arr.tensorssAlongDimension(dimension); i++) {
                 INDArray retLinear = ret.tensorAlongDimension(i, dimension);
                 INDArray arrTensor = arr.tensorAlongDimension(i, dimension);
+
                 arrTensorLength = arrTensor.length();
                 for(int j = 0; j < arrTensor.length(); j++) {
                     int idx = j + arrOffset;
