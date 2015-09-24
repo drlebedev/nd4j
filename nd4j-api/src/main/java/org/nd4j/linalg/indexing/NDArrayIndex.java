@@ -317,7 +317,6 @@ public class NDArrayIndex implements INDArrayIndex {
     }
 
     protected static INDArrayIndex validate(int size, INDArrayIndex index) {
-
         if ((index instanceof IntervalIndex || index instanceof PointIndex) && size <= index.current())
             throw new IllegalArgumentException("NDArrayIndex is out of range. Beginning index:" + index.current() + " must be less than its size:" + size);
         if (index instanceof IntervalIndex && size < index.end()) {

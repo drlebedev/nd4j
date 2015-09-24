@@ -34,6 +34,147 @@ public class ShapeOffsetResolution implements Serializable {
         this.arr = arr;
     }
 
+
+    public boolean tryShortCircuit(INDArrayIndex...indexes) {
+        int pointIndex = 0;
+        int interval = 0;
+        int newAxis = 0;
+        int numAll = 0;
+        int numSpecified = 0;
+        for(int i = 0; i < indexes.length; i++) {
+            if(indexes[i] instanceof PointIndex) {
+                pointIndex++;
+            }
+            if(indexes[i] instanceof SpecifiedIndex)
+                numSpecified++;
+            else if(indexes[i] instanceof IntervalIndex && !(indexes[i] instanceof NDArrayIndexAll))
+                interval++;
+            else if(indexes[i] instanceof NewAxis)
+                newAxis++;
+            else if(indexes[i] instanceof NDArrayIndexAll)
+                numAll++;
+
+        }
+
+        //specific easy case
+        if(numSpecified < 1 && interval < 1 && newAxis < 1 && pointIndex > 0 && numAll > 0) {
+            int minDimensions = Math.max(arr.rank() - pointIndex,2);
+            int[] shape = new int[minDimensions];
+            Arrays.fill(shape,1);
+            int[] stride = new int[minDimensions];
+            Arrays.fill(stride,arr.elementStride());
+            int[] offsets = new int[minDimensions];
+            int offset = 0;
+            //used for filling in elements of the actual shape stride and offsets
+            int currIndex = 0;
+            //used for array item access
+            int arrIndex = 0;
+            for(int i = 0; i < indexes.length; i++) {
+                if(indexes[i] instanceof NDArrayIndexAll) {
+                    shape[currIndex] = arr.size(arrIndex);
+                    stride[currIndex] = arr.stride(arrIndex);
+                    currIndex++;
+                    arrIndex++;
+                }
+                //point index
+                else {
+                    offset += indexes[i].offset() * arr.stride(i);
+                    arrIndex++;
+
+                }
+            }
+
+            if(arr.isMatrix() && indexes[0] instanceof PointIndex) {
+                shape = ArrayUtil.reverseCopy(shape);
+                stride = ArrayUtil.reverseCopy(stride);
+            }
+
+            //keep same strides
+            this.strides = stride;
+            this.shapes = shape;
+            this.offsets = offsets;
+            this.offset = offset;
+            return true;
+
+        }
+
+        //intervals and all
+        else if(numSpecified < 1 && interval > 0 && newAxis < 1 && pointIndex < 1 && numAll > 0) {
+            int minDimensions = Math.max(arr.rank(),2);
+            int[] shape = new int[minDimensions];
+            Arrays.fill(shape,1);
+            int[] stride = new int[minDimensions];
+            Arrays.fill(stride,arr.elementStride());
+            int[] offsets = new int[minDimensions];
+
+            for(int i = 0; i < shape.length; i++) {
+                if(indexes[i] instanceof NDArrayIndexAll) {
+                    shape[i] = arr.size(i);
+                    stride[i] = arr.stride(i);
+                    offsets[i] = indexes[i].offset();
+                }
+                else if(indexes[i] instanceof IntervalIndex) {
+                    shape[i] = indexes[i].length();
+                    stride[i] = indexes[i].stride() * arr.stride(i);
+                    offsets[i] = indexes[i].offset();
+                }
+            }
+
+            this.shapes = shape;
+            this.strides = stride;
+            this.offsets = offsets;
+            this.offset = 0;
+            for(int i = 0; i < indexes.length; i++) {
+                offset += offsets[i] * (stride[i] / indexes[i].stride());
+            }
+            return true;
+        }
+
+        //all and newaxis
+        else if(numSpecified < 1 && interval < 1 && newAxis < 1 && pointIndex < 1 && numAll > 0) {
+            int minDimensions = Math.max(arr.rank(),2) + newAxis;
+            //new axis dimensions + all
+            int[] shape = new int[minDimensions];
+            Arrays.fill(shape,1);
+            int[] stride = new int[minDimensions];
+            Arrays.fill(stride,arr.elementStride());
+            int[] offsets = new int[minDimensions];
+            int prependNewAxes = 0;
+            boolean allFirst = false;
+            int shapeAxis = 0;
+            for(int i = 0; i < indexes.length; i++) {
+                //prepend if all was not first; otherwise its meant
+                //to be targeted for particular dimensions
+                if(indexes[i] instanceof NewAxis) {
+                    if(allFirst) {
+                        shape[i] = 1;
+                        stride[i] = 0;
+                    }
+                    else {
+                        prependNewAxes++;
+                    }
+
+                }
+                //all index
+                else {
+                    if(i == 0)
+                        allFirst = true;
+                    //offset by number of axes to prepend
+                    shape[i] = arr.size(shapeAxis + prependNewAxes);
+                    stride[i] = arr.stride(shapeAxis + prependNewAxes);
+                    shapeAxis++;
+                }
+            }
+            this.shapes = shape;
+            this.strides = stride;
+            this.offsets = offsets;
+            return true;
+        }
+
+
+        return false;
+    }
+
     /**
      * Based on the passed in array
      * compute the shape,offsets, and strides
@@ -44,7 +185,12 @@ public class ShapeOffsetResolution implements Serializable {
      */
     public void exec(INDArrayIndex... indexes) {
         indexes = NDArrayIndex.resolve(arr.shape(),indexes);
+        if(tryShortCircuit(indexes)) {
+            return;
+        }
         int[] shape = arr.shape();
+
+
         int numIntervals = 0;
         //number of new axes dimensions to prepend to the beginning
         int newAxesPrepend = 0;
