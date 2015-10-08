@@ -27,12 +27,13 @@ import org.nd4j.bytebuddy.shape.ShapeMapper;
 import org.nd4j.linalg.api.buffer.DataBuffer;
 import org.nd4j.linalg.api.buffer.DataBuffer.AllocationMode;
 import org.nd4j.linalg.api.complex.IComplexNDArray;
+import org.nd4j.linalg.api.iter.NdIndexIterator;
 import org.nd4j.linalg.api.ndarray.INDArray;
 import org.nd4j.linalg.api.ops.Op;
 import org.nd4j.linalg.api.shape.loop.coordinatefunction.CoordinateFunction;
-import org.nd4j.linalg.api.shape.loop.coordinatefunction.CopyCoordinateFunction;
 import org.nd4j.linalg.api.shape.loop.four.LoopFunction4;
 import org.nd4j.linalg.api.shape.loop.four.RawArrayIterationInformation4;
+import org.nd4j.linalg.api.shape.loop.one.RawArrayIterationInformation1;
 import org.nd4j.linalg.api.shape.loop.three.LoopFunction3;
 import org.nd4j.linalg.api.shape.loop.three.RawArrayIterationInformation3;
 import org.nd4j.linalg.api.shape.loop.two.CopyLoopFunction;
@@ -152,7 +153,7 @@ public class Shape {
         return toOffsetZeroCopyHelper(arr, Nd4j.order(), true);
     }
 
-    private static INDArray toOffsetZeroCopyHelper(final INDArray arr, char order, boolean anyOrder ){
+    private static INDArray toOffsetZeroCopyHelper(final INDArray arr, char order, boolean anyOrder) {
 
         if(arr instanceof IComplexNDArray){
             if(arr.isRowVector()){
@@ -167,7 +168,7 @@ public class Shape {
             return ret;
         } else {
 
-            if(arr.data().allocationMode() == AllocationMode.HEAP){
+            if(arr.data().allocationMode() == AllocationMode.HEAP) {
                 if(Shape.isContiguousInBuffer(arr) && Shape.strideDescendingCAscendingF(arr)
                         && (anyOrder || order == arr.ordering()) ){
                     //Can do array copy on data
@@ -207,18 +208,25 @@ public class Shape {
             }
 
             final INDArray ret = Nd4j.create(arr.shape(),order);
-            Shape.iterate(arr, new CoordinateFunction() {
-                @Override
-                public void process(int[]... coord) {
-                    ret.putScalar(coord[0],arr.getDouble(coord[0]));
+            if(arr.elementWiseStride() < 0 || arr.ordering() != ret.ordering()) {
+                NdIndexIterator iterator = new NdIndexIterator(ret.shape());
+                while(iterator.hasNext()) {
+                    int[] next = iterator.next();
+                    ret.putScalar(next,arr.getDouble(next));
                 }
-            });
+            }
+            else {
+                for(int i = 0; i < ret.length(); i++)
+                    ret.putScalarUnsafe(i * ret.elementWiseStride(),arr.getDoubleUnsafe(i * arr.elementWiseStride()));
+            }
 
             return ret;
         }
     }
 
-    /** Idea: make an matrix compatible for mmul without needing to be copied first<br>
+    /**
+     *
+     * Idea: make an matrix compatible for mmul without needing to be copied first<br>
      * A matrix is compatible for mmul if its values are contiguous in memory. Offset is OK.
      * Returns the input array if input can be used in mmul without additional copy overhead
      * Otherwise returns a copy of the input ndarray that can be used in mmul without additional copy overhead<br>
@@ -334,6 +342,40 @@ public class Shape {
             }
         }
     }
+
+    /**
+     * Iterates over
+     * each possible
+     * offset of an ndarray
+     * @param arr
+     * @param coordinateFunction
+     */
+    public static void forEachOffset(INDArray[] arr,CoordinateFunction coordinateFunction) {
+        int[] offset = new int[arr.length];
+        int length = arr[0].length();
+        for(int i = 0; i < length; i++)  {
+            for(int j = 0; j < offset.length; j++) {
+                offset[j] = arr[j].offset() + i * arr[j].elementWiseStride();
+            }
+            coordinateFunction.process(offset);
+        }
+    }
+
+    /**
+     * Iterates over each possible offset of an ndarray
+     * @param arr
+     * @param coordinateFunction
+     */
+    public static void forEachOffset(INDArray arr,CoordinateFunction coordinateFunction) {
+        int[] offset = new int[1];
+        INDArray reshape = arr.reshape(1,arr.length());
+        for(int i = 0; i < reshape.length(); i++)  {
+            offset[0] = reshape.offset() + i * reshape.stride(-1);
+            coordinateFunction.process(offset);
+        }
+    }
+
+
     /**
      * Iterate over a pair of coordinates
      * @param dimension
@@ -853,6 +895,17 @@ public class Shape {
     }
 
 
+    /**
+     * Prepares two arrays for
+     * raw iteration linearly through the data.
+     * It uses the same data for allocation
+     * @param dst the first array
+     */
+    public static RawArrayIterationInformation1 prepareRawArrayIter(INDArray dst) {
+        return RawArrayIterationInformation1.builder().aOffset(dst.offset()).a(dst.data())
+                .aStrides(dst.stride())
+                .nDim(dst.rank()).shape(dst.shape()).build().computeOut();
+    }
 
 
     /**
