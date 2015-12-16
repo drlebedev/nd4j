@@ -1,13 +1,18 @@
 package org.nd4j.linalg.jcublas.context;
 
+import jcuda.driver.CUevent;
 import jcuda.driver.CUstream;
 import jcuda.driver.CUstream_flags;
 import jcuda.driver.JCudaDriver;
 import jcuda.jcublas.JCublas2;
 import jcuda.jcublas.cublasHandle;
 import jcuda.runtime.JCuda;
+import jcuda.runtime.cudaEvent_t;
 import jcuda.runtime.cudaStream_t;
 import lombok.Data;
+import org.nd4j.linalg.jcublas.CublasPointer;
+
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * A higher level class for handling
@@ -21,8 +26,26 @@ import lombok.Data;
 @Data
 public class CudaContext implements AutoCloseable {
     private CUstream stream;
+    private CUevent cUevent;
     private cudaStream_t oldStream;
+    private cudaEvent_t oldEvent;
     private cublasHandle handle;
+    private CublasPointer resultPointer;
+    private AtomicBoolean oldStreamReturned = new AtomicBoolean(false);
+    private AtomicBoolean handleReturned = new AtomicBoolean(false);
+    private AtomicBoolean streamReturned = new AtomicBoolean(false);
+    private boolean streamFromPool = true;
+    private boolean handleFromPool = true;
+    private boolean oldStreamFromPool = true;
+    private boolean free = true;
+    private boolean oldEventDestroyed = true;
+    private boolean eventDestroyed = true;
+
+
+    public CudaContext(boolean free) {
+        this();
+        this.free = free;
+    }
 
 
     public CudaContext() {
@@ -34,7 +57,14 @@ public class CudaContext implements AutoCloseable {
      * stream
      */
     public void syncStream() {
-        JCudaDriver.cuStreamSynchronize(stream);
+        if(eventDestroyed) {
+            return;
+        }
+        JCudaDriver.cuEventSynchronize(cUevent);
+        JCudaDriver.cuEventDestroy(cUevent);
+        eventDestroyed = true;
+
+        //JCudaDriver.cuStreamSynchronize(stream);
     }
 
     /**
@@ -42,7 +72,11 @@ public class CudaContext implements AutoCloseable {
      * on the old stream
      */
     public void syncOldStream() {
-        JCuda.cudaStreamSynchronize(oldStream);
+        if(!oldEventDestroyed) {
+            JCuda.cudaStreamWaitEvent(oldStream,oldEvent,0);
+            JCuda.cudaEventDestroy(oldEvent);
+            oldEventDestroyed = true;
+        }
     }
 
     /**
@@ -56,6 +90,13 @@ public class CudaContext implements AutoCloseable {
         syncOldStream();
     }
 
+    /**
+     * Get the result pointer for the context
+     * @return
+     */
+    public CublasPointer getResultPointer() {
+        return resultPointer;
+    }
 
     /**
      * Associates
@@ -63,26 +104,70 @@ public class CudaContext implements AutoCloseable {
      * to the given stream
      */
     public void associateHandle() {
+        ContextHolder.getInstance().setContext();
         JCublas2.cublasSetStream(handle, oldStream);
     }
+
+    /**
+     * Record an event.
+     * This is for marking when an operation
+     * starts.
+     */
+    public void startOldEvent() {
+        JCuda.cudaEventRecord(oldEvent, oldStream);
+    }
+
+    /**
+     * Record an  event (new).
+     * This is for marking when an operation
+     * starts.
+     */
+    public void startNewEvent() {
+        JCudaDriver.cuEventRecord(cUevent,stream);
+    }
+
 
     /**
      * Initializes the stream
      */
     public void initStream() {
-        stream = new CUstream();
-        JCudaDriver.cuStreamCreate(stream, CUstream_flags.CU_STREAM_NON_BLOCKING);
+        if(stream == null) {
+            try {
+                stream = ContextHolder.getInstance().getStreamPool().borrowObject();
+            } catch (Exception e) {
+                stream = new CUstream();
+                JCudaDriver.cuStreamCreate(stream, CUstream_flags.CU_STREAM_NON_BLOCKING);
+                streamFromPool = false;
+            }
 
+            cUevent = new CUevent();
+            JCudaDriver.cuEventCreate(cUevent,0);
+            eventDestroyed = false;
+        }
     }
 
     /**
      * Initializes the old stream
      */
     public void initOldStream() {
-        oldStream = new cudaStream_t();
-        JCuda.cudaStreamCreate(oldStream);
+        if(oldStream == null)  {
+            try {
+                oldStream = ContextHolder.getInstance().getOldStreamPool().borrowObject();
+            } catch (Exception e) {
+                oldStreamFromPool = false;
+                oldStream = new cudaStream_t();
+                JCuda.cudaStreamCreate(oldStream);
+
+            }
+
+            oldEvent = new cudaEvent_t();
+            JCuda.cudaEventCreate(oldEvent);
+            oldEventDestroyed = false;
+        }
 
     }
+
+
 
 
     /**
@@ -92,24 +177,137 @@ public class CudaContext implements AutoCloseable {
      *
      */
     public void initHandle() {
-        handle = new cublasHandle();
-        JCublas2.cublasCreate(handle);
-        associateHandle();
+        if(handle == null) {
+            try {
+                handle = ContextHolder.getInstance().getHandlePool().borrowObject();
+            } catch (Exception e) {
+                handle = new cublasHandle();
+                JCublas2.cublasCreate(handle);
+                handleFromPool = false;
+            }
+            associateHandle();
+        }
+
     }
 
     /**
      * Destroys the context
      * and associated resources
      */
+    public void destroy(CublasPointer resultPointer,boolean freeIfNotEqual) {
+        if(handle != null && !handleReturned.get()) {
+            try {
+                if(handleFromPool)
+                    ContextHolder.getInstance().getHandlePool().returnObject(handle);
+                else {
+                    JCublas2.cublasDestroy(handle);
+
+                }
+                handleReturned.set(true);
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }
+        if(stream != null && !streamReturned.get()) {
+            try {
+                if(streamFromPool)
+                    ContextHolder.getInstance().getStreamPool().returnObject(stream);
+                else {
+                    JCudaDriver.cuStreamDestroy(stream);
+
+                }
+                streamReturned.set(true);
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }
+        if(oldStream != null && !oldStreamReturned.get()) {
+            try {
+                if(oldStreamFromPool)
+                    ContextHolder.getInstance().getOldStreamPool().returnObject(oldStream);
+                else {
+                    JCuda.cudaStreamDestroy(oldStream);
+
+                }
+                oldStreamReturned.set(true);
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }
+
+        if(resultPointer != null && freeIfNotEqual && freeIfNotEqual) {
+            resultPointer.copyToHost();
+            try {
+                resultPointer.close();
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }
+
+        if(!oldEventDestroyed) {
+            JCuda.cudaEventDestroy(oldEvent);
+            oldEventDestroyed = true;
+        }
+
+        if(!eventDestroyed) {
+            JCudaDriver.cuEventDestroy(cUevent);
+            eventDestroyed = true;
+        }
+    }
+
+
+    /**
+     * Destroys the context
+     * and associated resources
+     */
     public void destroy() {
-        if(handle != null) {
-            JCublas2.cublasDestroy(handle);
+        if(handle != null && !handleReturned.get()) {
+            try {
+                if(handleFromPool)
+                    ContextHolder.getInstance().getHandlePool().returnObject(handle);
+                else {
+                    JCublas2.cublasDestroy(handle);
+
+                }
+                handleReturned.set(true);
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
         }
-        if(stream != null) {
-            JCudaDriver.cuStreamDestroy(stream);
+        if(stream != null && !streamReturned.get()) {
+            try {
+                if(streamFromPool)
+                    ContextHolder.getInstance().getStreamPool().returnObject(stream);
+                else {
+                    JCudaDriver.cuStreamDestroy(stream);
+
+                }
+                streamReturned.set(true);
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
         }
-        if(oldStream != null) {
-            JCuda.cudaStreamDestroy(oldStream);
+        if(oldStream != null && !oldStreamReturned.get()) {
+            try {
+                if(oldStreamFromPool)
+                    ContextHolder.getInstance().getOldStreamPool().returnObject(oldStream);
+                else {
+                    JCuda.cudaStreamDestroy(oldStream);
+
+                }
+                oldStreamReturned.set(true);
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }
+
+        if(resultPointer != null) {
+            resultPointer.copyToHost();
+            try {
+                resultPointer.close();
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
         }
     }
 
@@ -119,7 +317,6 @@ public class CudaContext implements AutoCloseable {
      * and destroys this context
      */
     public void finishBlasOperation() {
-        syncOldStream();
         destroy();
     }
 
@@ -134,6 +331,13 @@ public class CudaContext implements AutoCloseable {
         ctx.initOldStream();
         ctx.initHandle();
         return ctx;
+    }
+
+    /**
+     * Calls cuda device synchronize
+     */
+    public void syncDevice() {
+        JCuda.cudaDeviceSynchronize();
     }
 
     @Override

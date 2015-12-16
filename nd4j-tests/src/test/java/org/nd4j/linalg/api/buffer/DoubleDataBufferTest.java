@@ -91,14 +91,14 @@ public  class DoubleDataBufferTest extends BaseNd4jTest {
         String fileName = "buf.ser";
         File file = new File(fileName);
         file.deleteOnExit();
-        org.nd4j.linalg.util.SerializationUtils.saveObject(buf, file);
+        SerializationUtils.saveObject(buf, file);
         DataBuffer buf2 = SerializationUtils.readObject(file);
         assertEquals(buf, buf2);
 
         Nd4j.alloc = DataBuffer.AllocationMode.DIRECT;
         buf = Nd4j.createBuffer(5);
         file.deleteOnExit();
-        org.nd4j.linalg.util.SerializationUtils.saveObject(buf, file);
+       SerializationUtils.saveObject(buf, file);
         buf2 = SerializationUtils.readObject(file);
         assertEquals(buf, buf2);
     }
@@ -115,9 +115,9 @@ public  class DoubleDataBufferTest extends BaseNd4jTest {
     @Test
     public void testNettyCopy() {
         DataBuffer db = Nd4j.createBuffer(new double[]{1, 2, 3, 4});
-        ByteBuf buf = db.asNetty();
         if(db.allocationMode() == DataBuffer.AllocationMode.HEAP)
             return;
+        ByteBuf buf = db.asNetty();
 
         ByteBuf copy = buf.copy(0, buf.capacity());
         for(int i = 0; i < db.length(); i++) {

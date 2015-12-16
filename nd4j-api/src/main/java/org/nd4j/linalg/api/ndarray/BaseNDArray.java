@@ -28,7 +28,6 @@ import org.nd4j.linalg.api.complex.IComplexNumber;
 import org.nd4j.linalg.api.instrumentation.Instrumentation;
 import org.nd4j.linalg.api.iter.NdIndexIterator;
 import org.nd4j.linalg.api.iter.FirstAxisIterator;
-import org.nd4j.linalg.api.ops.executioner.DefaultOpExecutioner;
 import org.nd4j.linalg.api.ops.impl.accum.Max;
 import org.nd4j.linalg.api.ops.impl.accum.*;
 import org.nd4j.linalg.api.ops.impl.accum.Min;
@@ -43,11 +42,7 @@ import org.nd4j.linalg.api.ops.impl.transforms.arithmetic.DivOp;
 import org.nd4j.linalg.api.ops.impl.transforms.arithmetic.MulOp;
 import org.nd4j.linalg.api.ops.impl.transforms.arithmetic.SubOp;
 import org.nd4j.linalg.api.ops.impl.transforms.comparison.*;
-import org.nd4j.linalg.api.ops.impl.vector.*;
-import org.nd4j.linalg.api.parallel.TaskCreator;
-import org.nd4j.linalg.api.shape.loop.coordinatefunction.CoordinateFunction;
-import org.nd4j.linalg.api.shape.loop.two.CopyLoopFunction;
-import org.nd4j.linalg.api.shape.loop.two.RawArrayIterationInformation2;
+import org.nd4j.linalg.api.ops.impl.broadcast.*;
 import org.nd4j.linalg.factory.NDArrayFactory;
 import org.nd4j.linalg.factory.Nd4j;
 import org.nd4j.linalg.indexing.*;
@@ -63,7 +58,6 @@ import org.slf4j.LoggerFactory;
 import java.lang.ref.WeakReference;
 import java.lang.Iterable;
 import java.util.*;
-import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.nd4j.linalg.util.ArrayUtil.*;
 
@@ -722,14 +716,26 @@ public abstract class BaseNDArray implements INDArray, Iterable {
 
     @Override
     public int tensorssAlongDimension(int... dimension) {
-        if(dimension == null || dimension.length == 0) throw new IllegalArgumentException("Invalid input: dimensions not specified (null or length 0)");
+        for(int i = 0; i < dimension.length; i++)
+            if(dimension[i] < 0)
+                dimension[i] += rank();
+        if(dimension == null || dimension.length == 0)
+            throw new IllegalArgumentException("Invalid input: dimensions not specified (null or length 0)");
         int[] tensorShape = ArrayUtil.keep(shape(), dimension);
         return length / ArrayUtil.prod(tensorShape);
     }
 
     @Override
     public INDArray tensorAlongDimension(int index, int... dimension) {
-        if(dimension == null || dimension.length == 0) throw new IllegalArgumentException("Invalid input: dimensions not specified (null or length 0)");
+
+        if(dimension == null || dimension.length == 0)
+            throw new IllegalArgumentException("Invalid input: dimensions not specified (null or length 0)");
+
+        for(int i = 0; i < dimension.length; i++)
+            if(dimension[i] < 0)
+                dimension[i] += rank();
+
+
         if(dimension.length == 1 && isColumnVector() && dimension[0] == 0 || isRowVector() && isRowVector() && dimension[0] == 1) {
             return this;
         }
@@ -1017,69 +1023,11 @@ public abstract class BaseNDArray implements INDArray, Iterable {
      */
     @Override
     public INDArray assign(final INDArray arr) {
-        if (isVector() && arr.isVector() && length() != arr.length())
-            throw new IllegalArgumentException("Illegal assignment, must be of same length");
-        if(isVector()) {
-            if(isColumnVector() && arr.isRowVector()) {
-                for(int i = 0; i < arr.length(); i++) {
-                    putScalar(new int[]{i,0},arr.getDouble(new int[]{0,i}));
-                }
-            }
-            else if(isRowVector() && arr.isColumnVector()) {
-                for(int i = 0; i < arr.length(); i++) {
-                    putScalar(new int[]{0,i},arr.getDouble(new int[]{i,0}));
-                }
-            }
-            else if(arr.isRowVector() && isRowVector()) {
-                for(int i = 0; i < arr.length(); i++) {
-                    putScalar(new int[]{0,i},arr.getDouble(new int[]{0,i}));
-                }
-            }
-            else if(arr.isColumnVector() && arr.isColumnVector()) {
-                for(int i = 0; i < arr.length(); i++) {
-                    putScalar(new int[]{i,0},arr.getDouble(new int[]{i,0}));
-                }
-            }
-
-            else if(isRowVector()){
-                final AtomicInteger a = new AtomicInteger(0);
-                Shape.iterate(arr, new CoordinateFunction() {
-                    @Override
-                    public void process(int[]... coord) {
-                        putScalar(new int[]{0,a.getAndIncrement()},arr.getDouble(coord[0]));
-                    }
-                });
-            }
-
-            else if(isColumnVector()){
-                final AtomicInteger a = new AtomicInteger(0);
-                Shape.iterate(arr, new CoordinateFunction() {
-                    @Override
-                    public void process(int[]... coord) {
-                        putScalar(new int[]{a.getAndIncrement(),0},arr.getDouble(coord[0]));
-                    }
-                });
-            }
-
+        if(arr.elementWiseStride() > 0 && elementWiseStride() > 0 && ordering() == arr.ordering()) {
+            data().copyAtStride(arr.data(),arr.length(),elementWiseStride(),arr.elementWiseStride(),offset(),arr.offset());
         }
-
-        else if(Arrays.equals(this.shape(),arr.shape())) {
-            Shape.iterate(this, new CoordinateFunction() {
-                @Override
-                public void process(int[]... coord) {
-                    putScalar(coord[0],arr.getDouble(coord[0]));
-                }
-            });
-        }
-
 
         else {
-      /*      Shape.iterate(this, arr, new CoordinateFunction() {
-                @Override
-                public void process(int[]... coord) {
-                    putScalar(coord[0],arr.getDouble(coord[1]));
-                }
-            });*/
             NdIndexIterator iterator = new NdIndexIterator(this.shape());
             NdIndexIterator otherIter = new NdIndexIterator(arr.shape());
             for(int i = 0; i < length(); i++) {
@@ -1396,7 +1344,7 @@ public abstract class BaseNDArray implements INDArray, Iterable {
 
         if (Double.isNaN(n.doubleValue()))
             n = Nd4j.EPS_THRESHOLD;
-        Nd4j.getExecutioner().exec(new ScalarAdd(linearView(), null, result.linearView(), result.length(), n));
+        Nd4j.getExecutioner().exec(new ScalarAdd(this, null, result, result.length(), n));
         return this;
     }
 
@@ -1446,6 +1394,16 @@ public abstract class BaseNDArray implements INDArray, Iterable {
      */
     @Override
     public double getDouble(int... indices) {
+        if(indices.length == 1) {
+            if(isRowVector())
+                return Shape.getDouble(this,0,indices[0]);
+            else if(isColumnVector())
+                return Shape.getDouble(this,indices[0],0);
+            else if(isScalar() && indices[0] == 0)
+                return data().getDouble(offset());
+            else
+                throw new IllegalStateException("Indexes length must be > 1 for non vectors and scalars");
+        }
         return Shape.getDouble(this, indices);
     }
 
@@ -1969,7 +1927,7 @@ public abstract class BaseNDArray implements INDArray, Iterable {
         }
         else {
             assertColumnVector(columnVector);
-            applyVectorOp(columnVector, operation);
+            applyBroadcastOp(columnVector, operation);
 
         }
 
@@ -2042,37 +2000,38 @@ public abstract class BaseNDArray implements INDArray, Iterable {
         }
         else {
             assertRowVector(rowVector);
-            applyVectorOp(rowVector, operation);
+            applyBroadcastOp(rowVector, operation);
         }
 
         return this;
     }
 
 
-    private void applyVectorOp(INDArray vector,final char operation) {
+    private void applyBroadcastOp(INDArray vector, final char operation) {
         int alongDimension = Shape.isRowVectorShape(vector.shape()) ? 1 : 0;
-        if(this.data() == vector.data()) vector = vector.dup();
-        switch(operation){
+        if(this.data() == vector.data())
+            vector = vector.dup();
+        switch(operation) {
             case 'a':
-                Nd4j.getExecutioner().exec(new VectorAddOp(this, vector, this, alongDimension ));
+                Nd4j.getExecutioner().exec(new BroadcastAddOp(this, vector, this, alongDimension));
                 return;
             case 's':
-                Nd4j.getExecutioner().exec(new VectorSubOp(this, vector, this, alongDimension ));
+                Nd4j.getExecutioner().exec(new BroadcastSubOp(this, vector, this, alongDimension));
                 return;
             case 'm':
-                Nd4j.getExecutioner().exec(new VectorMulOp(this, vector, this, alongDimension ));
+                Nd4j.getExecutioner().exec(new BroadcastMulOp(this, vector, this, alongDimension));
                 return;
             case 'd':
-                Nd4j.getExecutioner().exec(new VectorDivOp(this, vector, this, alongDimension ));
+                Nd4j.getExecutioner().exec(new BroadcastDivOp(this, vector, this, alongDimension));
                 return;
             case 'h':
-                Nd4j.getExecutioner().exec(new VectorRSubOp(this, vector, this, alongDimension ));
+                Nd4j.getExecutioner().exec(new BroadcastRSubOp(this, vector, this, alongDimension));
                 return;
             case 't':
-                Nd4j.getExecutioner().exec(new VectorRDivOp(this, vector, this, alongDimension ));
+                Nd4j.getExecutioner().exec(new BroadcastRDivOp(this, vector, this, alongDimension));
                 return;
             case 'p':
-                Nd4j.getExecutioner().exec(new VectorCopyOp(this, vector, this, alongDimension ));
+                Nd4j.getExecutioner().exec(new BroadcastCopyOp(this, vector, this, alongDimension));
                 return;
             default:
                 throw new UnsupportedOperationException("Unknown operation: " + operation);
@@ -2851,9 +2810,7 @@ public abstract class BaseNDArray implements INDArray, Iterable {
      */
     @Override
     public INDArray assign(Number value) {
-        for(int i = 0; i < linearView().length(); i++) {
-            linearView().putScalar(i,value.doubleValue());
-        }
+        data().assign(value,offset());
         return this;
     }
 
@@ -3869,7 +3826,7 @@ public abstract class BaseNDArray implements INDArray, Iterable {
                 }
                 else {
                     if (i < shape().length)
-                        retShape[i] = Math.max(shape[i], shape()[i]);
+                        retShape[i] = Math.max(shape[i], size(i));
                     else
                         retShape[i] = shape[i];
                 }
@@ -3880,14 +3837,14 @@ public abstract class BaseNDArray implements INDArray, Iterable {
                 else
                     nonBroadCastDimensions.add(i);
                 if (i < shape().length)
-                    retShape[i] = Math.max(shape[i], shape()[i]);
+                    retShape[i] = Math.max(shape[i], size(i));
                 else
                     retShape[i] = shape[i];
             }
 
         }
 
-        INDArray ret = create(retShape);
+        INDArray ret = create(retShape,ordering());
 
         if(isRowVector()) {
             //number of times to repeat each value
@@ -3902,9 +3859,11 @@ public abstract class BaseNDArray implements INDArray, Iterable {
                 INDArray thisTensor = slice(i);
                 INDArray retTensor = ret.slice(i);
                 int retIdx = 0;
-                int tensorLen = thisTensor.shape().length;
-                for(int k = 0; k < tensorLen; k++) {
+                int tensorLen = thisTensor.rank();
+                outer: for(int k = 0; k < tensorLen; k++) {
                     for(int j = 0; j < repeatDelta; j++) {
+                        if(retIdx >= retTensor.length())
+                            break outer;
                         retTensor.putScalar(retIdx++,thisTensor.getDouble(k));
                     }
                 }

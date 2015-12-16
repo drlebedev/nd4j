@@ -1,6 +1,5 @@
 package org.nd4j.linalg.api.parallel.tasks.cpu.accumulation;
 
-import lombok.AllArgsConstructor;
 import org.nd4j.linalg.api.ndarray.INDArray;
 import org.nd4j.linalg.api.ops.Accumulation;
 import org.nd4j.linalg.api.ops.executioner.OpExecutionerUtil;
@@ -28,6 +27,9 @@ public class CPUAccumulationAlongDimensionTask extends BaseCPUTask<INDArray> {
 
     public CPUAccumulationAlongDimensionTask(Accumulation op, int parallelThreshold, int... dimensions) {
         super(op, parallelThreshold);
+        for(int i = 0; i < dimensions.length; i++)
+            if(dimensions[i] < 0)
+                dimensions[i] += op.x().rank();
         this.op = op;
         this.dimensions = dimensions;
     }
@@ -39,16 +41,22 @@ public class CPUAccumulationAlongDimensionTask extends BaseCPUTask<INDArray> {
             invokeAsync();
         }
 
-        INDArray ret = null;
+        INDArray ret;
         try {
             ret = future.get();
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
-        if(ret != null) return ret; //ForkJoin
 
+        if(ret != null) {
+            if(dimensions.length == 1 && dimensions[0] == 1 && op.x().isMatrix())
+                ret = ret.reshape(ret.length(),1);
+            return ret; //ForkJoin
+        }
         //ExecutorService
         int[] retShape = ArrayUtil.removeIndex(op.x().shape(), dimensions);
+        if(dimensions.length == 1 && dimensions[0] == 1 && op.x().isMatrix())
+            retShape = new int[] {op.x().length(),1};
         INDArray out = Nd4j.create(retShape);
         int i = 0;
         for (Task<Double> task : subTasks) {
@@ -75,18 +83,19 @@ public class CPUAccumulationAlongDimensionTask extends BaseCPUTask<INDArray> {
     @Override
     public INDArray compute() {
         //Fork Join: Recursive decomposition
-
-        if(dimensions.length == 1 && !op.isPassThrough()){
+        if(dimensions.length == 1 && !op.isPassThrough()) {
             TensorCalculator tCalcx = TensorCalculatorFactory.getTensorCalculator(op.x(), dimensions[0]);
             TensorCalculator tCalcy;
-            if(op.y() != null) tCalcy = TensorCalculatorFactory.getTensorCalculator(op.y(), dimensions[0]);
-            else tCalcy = null;
+            if(op.y() != null)
+                tCalcy = TensorCalculatorFactory.getTensorCalculator(op.y(), dimensions[0]);
+            else
+                tCalcy = null;
 
             int[] retShape = ArrayUtil.removeIndex(op.x().shape(), dimensions);
             INDArray out = Nd4j.create(retShape);
 
             RecursiveAction action = new CPUAccumulations1dAction(op,threshold,tCalcx, tCalcy, 0,
-                    tCalcx.getNumTensors()-1, out);
+                    tCalcx.getNumTensors() - 1, out);
             action.invoke();
             op.setZ(out);
             return out;

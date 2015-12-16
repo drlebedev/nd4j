@@ -30,10 +30,10 @@ import org.nd4j.linalg.api.iter.INDArrayIterator;
 import org.nd4j.linalg.api.iter.NdIndexIterator;
 import org.nd4j.linalg.api.ndarray.INDArray;
 import org.nd4j.linalg.api.ops.Accumulation;
-import org.nd4j.linalg.api.ops.VectorOp;
+import org.nd4j.linalg.api.ops.BroadcastOp;
 import org.nd4j.linalg.api.ops.executioner.OpExecutionerUtil;
 import org.nd4j.linalg.api.ops.impl.transforms.comparison.Eps;
-import org.nd4j.linalg.api.ops.impl.vector.*;
+import org.nd4j.linalg.api.ops.impl.broadcast.*;
 import org.nd4j.linalg.checkutil.NDArrayCreationUtil;
 import org.nd4j.linalg.factory.Nd4j;
 import org.nd4j.linalg.factory.Nd4jBackend;
@@ -259,6 +259,7 @@ public  class Nd4jTestsC extends BaseNd4jTest {
         oneThroughFour.subiRowVector(row1);
         INDArray result = Nd4j.create(new float[]{-2, -2, 0, 0}, new int[]{2, 2});
         assertEquals(getFailureMessage(), result, oneThroughFour);
+
     }
 
 
@@ -317,7 +318,7 @@ public  class Nd4jTestsC extends BaseNd4jTest {
         values2.put(1, 1, 2);
 
 
-        INDArray expected = Nd4j.repeat(Nd4j.scalar(2), 2);
+        INDArray expected = Nd4j.repeat(Nd4j.scalar(2), 2).reshape(2,1);
 
         Accumulation accum = Nd4j.getOpFactory().createAccum("euclidean", values, values2);
         INDArray results = Nd4j.getExecutioner().exec(accum, 1);
@@ -328,8 +329,6 @@ public  class Nd4jTestsC extends BaseNd4jTest {
     @Test
     public void testBroadCasting() {
         INDArray first = Nd4j.arange(0, 3).reshape(3, 1);
-        INDArray matrix = Nd4j.create(new double[][]{{1,2},{3,4}});
-        INDArray column = matrix.getColumn(1);
         INDArray ret = first.broadcast(3, 4);
         INDArray testRet = Nd4j.create(new double[][]{
                 {0, 0, 0, 0},
@@ -639,6 +638,7 @@ public  class Nd4jTestsC extends BaseNd4jTest {
 
     }
 
+
     @Test
     public void testScal() {
         Nd4j.dtype = DataBuffer.Type.DOUBLE;
@@ -851,7 +851,7 @@ public  class Nd4jTestsC extends BaseNd4jTest {
     public void testSum() {
         INDArray n = Nd4j.create(Nd4j.linspace(1, 8, 8).data(), new int[]{2, 2, 2});
         INDArray test = Nd4j.create(new float[]{3, 7, 11, 15}, new int[]{2, 2});
-        INDArray sum = n.sum(n.shape().length - 1);
+        INDArray sum = n.sum(-1);
         assertEquals(test, sum);
 
     }
@@ -882,9 +882,9 @@ public  class Nd4jTestsC extends BaseNd4jTest {
         assertArrayEquals(tad.shape(), new int[]{7, 5});
 
 
-        INDArray copy = Nd4j.zeros(7, 5);
-        for( int i=0; i<7; i++ ){
-            for( int j=0; j<5; j++ ){
+        INDArray copy = Nd4j.zeros(7,5);
+        for( int i = 0; i < 7; i++ ){
+            for( int j = 0; j < 5; j++ ){
                 copy.putScalar(new int[]{i,j},tad.getDouble(i,j));
             }
         }
@@ -1400,10 +1400,10 @@ public  class Nd4jTestsC extends BaseNd4jTest {
     }
     @Test
     public void testMMulRowColVectorMixedOrder(){
-        INDArray colVec = Nd4j.ones(5, 1);
-        INDArray rowVec = Nd4j.ones(1, 3);
+        INDArray colVec = Nd4j.ones(5,1);
+        INDArray rowVec = Nd4j.ones(1,3);
         INDArray out = colVec.mmul(rowVec);
-        assertArrayEquals(out.shape(), new int[]{5, 3});
+        assertArrayEquals(out.shape(),new int[]{5,3});
         assertTrue(out.equals(Nd4j.ones(5, 3)));
         //Above: OK
 
@@ -1604,7 +1604,9 @@ public  class Nd4jTestsC extends BaseNd4jTest {
         System.out.println("Out:\n" + out);
 
         int countZero = 0;
-        for( int i=0; i<8; i++ ) if(out.getDouble(i) == 0.0 ) countZero++;
+        for( int i = 0; i < 8; i++ )
+            if(out.getDouble(i) == 0.0 )
+                countZero++;
         assertEquals(countZero, 0);
     }
 
@@ -1624,18 +1626,12 @@ public  class Nd4jTestsC extends BaseNd4jTest {
     @Test
     public void testSums() {
         INDArray a = Nd4j.linspace(1, 4, 4).reshape(2, 2);
-        assertEquals(getFailureMessage(), Nd4j.create(new float[]{4, 6}), a.sum(0));
         assertEquals(getFailureMessage(),Nd4j.create(new float[]{3, 7}), a.sum(1));
+        assertEquals(getFailureMessage(), Nd4j.create(new float[]{4, 6}), a.sum(0));
         assertEquals(getFailureMessage(), 10, a.sumNumber().doubleValue(), 1e-1);
 
 
     }
-
-
-
-
-
-
 
     @Test
     public void testRSubi() {
@@ -2014,28 +2010,28 @@ public  class Nd4jTestsC extends BaseNd4jTest {
                     INDArray arr = orig.dup();
                     INDArray vector = Nd4j.rand(1, shape[i]);
 
-                    VectorOp op;
+                    BroadcastOp op;
                     switch(opNum){
                         case 0:
-                            op = new VectorAddOp(arr, vector, arr, i);
+                            op = new BroadcastAddOp(arr, vector, arr, i);
                             break;
                         case 1:
-                            op = new VectorCopyOp(arr, vector, arr, i);
+                            op = new BroadcastCopyOp(arr, vector, arr, i);
                             break;
                         case 2:
-                            op = new VectorDivOp(arr, vector, arr, i);
+                            op = new BroadcastDivOp(arr, vector, arr, i);
                             break;
                         case 3:
-                            op = new VectorMulOp(arr, vector, arr, i);
+                            op = new BroadcastMulOp(arr, vector, arr, i);
                             break;
                         case 4:
-                            op = new VectorRDivOp(arr, vector, arr, i);
+                            op = new BroadcastRDivOp(arr, vector, arr, i);
                             break;
                         case 5:
-                            op = new VectorRSubOp(arr, vector, arr, i);
+                            op = new BroadcastRSubOp(arr, vector, arr, i);
                             break;
                         case 6:
-                            op = new VectorSubOp(arr, vector, arr, i);
+                            op = new BroadcastSubOp(arr, vector, arr, i);
                             break;
                         default:
                             throw new RuntimeException();

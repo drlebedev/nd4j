@@ -20,6 +20,7 @@
 package org.nd4j.linalg.cpu;
 
 import com.github.fommil.netlib.BLAS;
+import com.github.fommil.netlib.LAPACK;
 import org.nd4j.linalg.factory.BaseBlasWrapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -40,7 +41,7 @@ public class BlasWrapper extends BaseBlasWrapper {
 
     public final static String FORCE_NATIVE = "org.nd4j.linalg.cpu.force_native";
     static {
-        String forceNative = System.getProperty(FORCE_NATIVE,"true");
+        String forceNative = System.getProperty(FORCE_NATIVE,"false");
         if(Boolean.parseBoolean(forceNative)) {
             try {
                 Field blasInstance = BLAS.class.getDeclaredField("INSTANCE");
@@ -51,6 +52,16 @@ public class BlasWrapper extends BaseBlasWrapper {
             } catch (Exception e) {
                 log.warn("unable to force native BLAS", e);
             }
+        }
+
+        //Check that native system blas is used:
+        if(!(BLAS.getInstance() instanceof com.github.fommil.netlib.NativeSystemBLAS)){
+            System.out.println("****************************************************************");
+            System.out.println("WARNING: COULD NOT LOAD NATIVE SYSTEM BLAS");
+            System.out.println("ND4J performance WILL be reduced");
+            System.out.println("Please install native BLAS library such as OpenBLAS or IntelMKL");
+            System.out.println("See http://nd4j.org/getstarted.html#open for further details");
+            System.out.println("****************************************************************");
         }
     }
 

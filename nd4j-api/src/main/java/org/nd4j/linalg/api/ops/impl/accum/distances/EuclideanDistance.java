@@ -53,22 +53,22 @@ public class EuclideanDistance extends BaseAccumulation {
 
     @Override
     public double update(double accum, double x){
-        return accum;
+        return accum + (x * x);
     }
 
     @Override
-    public double update(double accum, double x, double y){
+    public double update(double accum, double x, double y) {
         double d = (x-y);
         return accum + d*d;
     }
 
     @Override
     public float update(float accum, float x){
-        return accum;
+        return accum + (x * x);
     }
 
     @Override
-    public float update(float accum, float x, float y){
+    public float update(float accum, float x, float y) {
         float f = (x-y);
         return accum + f*f;
     }
@@ -79,18 +79,18 @@ public class EuclideanDistance extends BaseAccumulation {
     }
 
     @Override
-    public IComplexNumber update( IComplexNumber accum, double x, double y){
+    public IComplexNumber update( IComplexNumber accum, double x, double y) {
         double d = (x-y);
         return accum.add(d*d);
     }
 
     @Override
-    public IComplexNumber update( IComplexNumber accum, IComplexNumber x){
+    public IComplexNumber update(IComplexNumber accum, IComplexNumber x){
         return accum;
     }
 
     @Override
-    public IComplexNumber update( IComplexNumber accum, IComplexNumber x, IComplexNumber y){
+    public IComplexNumber update( IComplexNumber accum, IComplexNumber x, IComplexNumber y) {
         IComplexNumber c = x.sub(y);
         return accum.add(c.mul(c));
     }
@@ -191,17 +191,31 @@ public class EuclideanDistance extends BaseAccumulation {
     }
 
     @Override
-    public double getAndSetFinalResult(double accum){
-        double d = FastMath.sqrt(accum);
-        this.finalResult = d;
-        return d;
+    public double getAndSetFinalResult(double accum) {
+       if(applyFinalTransform) {
+           double d = FastMath.sqrt(accum);
+           this.finalResult = d;
+           return d;
+       }
+        else {
+           this.finalResult = accum;
+           return accum;
+       }
+
     }
 
     @Override
-    public float getAndSetFinalResult(float accum){
-        float f = (float)FastMath.sqrt(accum);
-        this.finalResult = f;
-        return f;
+    public float getAndSetFinalResult(float accum) {
+        if(applyFinalTransform) {
+            float f = (float) FastMath.sqrt(accum);
+            this.finalResult = f;
+            return f;
+        }
+        else {
+            this.finalResult = accum;
+            return accum;
+        }
+
     }
 
     @Override

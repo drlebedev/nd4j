@@ -22,7 +22,7 @@
     <modelVersion>4.0.0</modelVersion>
     <groupId>org.nd4j</groupId>
     <artifactId>nd4j</artifactId>
-    <version> 0.4-rc3.7-SNAPSHOT</version>
+    <version> 0.4-rc3.8-SNAPSHOT</version>
 
     <parent>
         <groupId>org.sonatype.oss</groupId>
@@ -144,18 +144,16 @@
     <url>http://nd4j.org/</url>
     <modules>
         <module>nd4j-api</module>
-        <module>nd4j-jblas</module>
         <module>nd4j-jdbc</module>
-        <module>nd4j-netlib-blas</module>
         <module>nd4j-jcublas-parent</module>
         <module>nd4j-instrumentation</module>
-        <module>nd4j-java</module>
         <module>nd4j-jocl-parent</module>
         <module>nd4j-tests</module>
         <module>nd4j-perf</module>
         <module>nd4j-x86</module>
         <module>nd4j-serde</module>
         <module>nd4j-bytebuddy</module>
+        <module>nd4j-common</module>
     </modules>
 
     <properties>

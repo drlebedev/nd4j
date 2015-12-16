@@ -47,7 +47,7 @@ import org.nd4j.linalg.api.ops.impl.transforms.arithmetic.*;
 import org.nd4j.linalg.factory.Nd4j;
 import org.nd4j.linalg.factory.Nd4jBackend;
 import org.nd4j.linalg.ops.transforms.Transforms;
-import org.springframework.core.io.ClassPathResource;
+import org.nd4j.linalg.io.ClassPathResource;
 
 import java.io.DataInputStream;
 import java.lang.reflect.Constructor;
@@ -93,6 +93,14 @@ public  class OpExecutionerTestsC extends BaseNd4jTest {
         INDArray assertion = Nd4j.create(new double[]{0., 0.69314718, 1.09861229, 1.38629436, 1.60943791,
                 1.79175947});
         assertEquals(assertion, transformed);
+    }
+
+    @Test
+    public void testNorm1AlongDimension() {
+        INDArray arr = Nd4j.linspace(1,8,8).reshape(2,4);
+        INDArray arrNorm1 = arr.norm2(1);
+        INDArray assertion = Nd4j.create(new double[]{5.47722558,  13.19090596});
+        assertEquals(assertion,arrNorm1);
     }
 
 
@@ -248,7 +256,7 @@ public  class OpExecutionerTestsC extends BaseNd4jTest {
         INDArray bias = Nd4j.linspace(1, 4, 4);
         Bias biaOp = new Bias(bias);
         Nd4j.getExecutioner().exec(biaOp);
-        assertEquals(0.0,biaOp.currentResult().doubleValue());
+        assertEquals(0.0,biaOp.currentResult().doubleValue(),1e-1);
     }
 
     @Test
@@ -517,6 +525,31 @@ public  class OpExecutionerTestsC extends BaseNd4jTest {
         INDArray arr6s = arr6.sum(2,3);
         for( int i=0; i<arr6m.length(); i++ ) assertEquals(arr6m.getDouble(i),1,0.0);
         for( int i=0; i<arr6s.length(); i++ ) assertEquals(arr6s.getDouble(i),16,0.0);
+    }
+
+    @Test
+    public void testStdev(){
+
+        INDArray arr = Nd4j.create(new float[]{0.9296161f, 0.31637555f, 0.1839188f}, new int[]{1, 3}, ordering());
+        double stdev = arr.stdNumber().doubleValue();
+        double stdev2 = arr.std(1).getDouble(0);
+        assertEquals(stdev,stdev2,0.0);
+
+        double exp = 0.397842772f;
+        assertEquals(exp,stdev,1e-7f);
+    }
+
+    @Test
+    public void testVariance(){
+
+        INDArray arr = Nd4j.create(new float[]{0.9296161f, 0.31637555f, 0.1839188f},new int[]{1,3},ordering());
+        double var = arr.varNumber().doubleValue();
+        INDArray temp = arr.var(1);
+        double var2 = arr.var(1).getDouble(0);
+        assertEquals(var,var2,0.0);
+
+        double exp = 0.158278871f;
+        assertEquals(exp,var,1e-7f);
     }
 
     @Override

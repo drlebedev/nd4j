@@ -63,6 +63,9 @@ public class CosineSimilarity extends BaseAccumulation {
         passThrough = true;
     }
 
+
+
+
     @Override
     public double update(double accum, double x){
         return accum + x;
@@ -99,7 +102,7 @@ public class CosineSimilarity extends BaseAccumulation {
     }
 
     @Override
-    public IComplexNumber update( IComplexNumber accum, IComplexNumber x, IComplexNumber y){
+    public IComplexNumber update( IComplexNumber accum, IComplexNumber x, IComplexNumber y) {
         return accum.add(x.mul(y));
     }
 
@@ -165,10 +168,10 @@ public class CosineSimilarity extends BaseAccumulation {
 
     @Override
     public void exec(){
-        this.constantNormalizedByNorm2X = Nd4j.getExecutioner().execAndReturn(new Norm2(x)).getFinalResult();
-        this.constantNormalizedByNorm2Y = Nd4j.getExecutioner().execAndReturn(new Norm2(y)).getFinalResult();
+        this.constantNormalizedByNorm2X = x.norm2Number();
+        this.constantNormalizedByNorm2Y = y.norm2Number();
         this.extraArgs = new Object[]{0.0,constantNormalizedByNorm2X, constantNormalizedByNorm2Y};
-        double dot = Nd4j.getExecutioner().execAndReturn(new Dot(x,y)).getFinalResult().doubleValue();
+        double dot = Nd4j.getBlasWrapper().dot(x,y);
         this.finalResult = dot / (constantNormalizedByNorm2X.doubleValue() * constantNormalizedByNorm2Y.doubleValue());
     }
 
@@ -177,8 +180,8 @@ public class CosineSimilarity extends BaseAccumulation {
         int[] retShape = ArrayUtil.removeIndex(x.shape(), dimension);
         int nOps = x.tensorssAlongDimension(dimension);
         z = Nd4j.create(retShape);
-        for( int i=0; i<nOps; i++ ){
-            double d = Nd4j.getExecutioner().execAndReturn((CosineSimilarity)opForDimension(i,dimension)).getFinalResult().doubleValue();
+        for( int i = 0; i < nOps; i++ ){
+            double d = Nd4j.getExecutioner().execAndReturn((CosineSimilarity) opForDimension(i,dimension)).getFinalResult().doubleValue();
             z.putScalar(i, d);
         }
     }

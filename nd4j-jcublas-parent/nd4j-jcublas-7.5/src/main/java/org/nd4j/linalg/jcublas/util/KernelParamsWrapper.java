@@ -23,27 +23,26 @@ import com.google.common.collect.ArrayListMultimap;
 import com.google.common.collect.Multimap;
 import jcuda.Pointer;
 import jcuda.Sizeof;
-import jcuda.driver.CUstream;
-import jcuda.driver.CUstream_flags;
-import jcuda.driver.JCudaDriver;
 import jcuda.runtime.JCuda;
 import jcuda.runtime.cudaMemcpyKind;
-import jcuda.runtime.cudaStream_t;
 import org.nd4j.linalg.api.buffer.DataBuffer;
 import org.nd4j.linalg.api.ndarray.INDArray;
 import org.nd4j.linalg.api.ops.Accumulation;
 import org.nd4j.linalg.api.ops.Op;
+import org.nd4j.linalg.factory.Nd4j;
 import org.nd4j.linalg.jcublas.CublasPointer;
 import org.nd4j.linalg.jcublas.buffer.JCudaBuffer;
-import org.nd4j.linalg.jcublas.complex.ComplexDouble;
+import org.nd4j.linalg.jcublas.buffer.allocation.PinnedMemoryStrategy;
 import org.nd4j.linalg.jcublas.context.ContextHolder;
 import org.nd4j.linalg.jcublas.context.CudaContext;
-import org.nd4j.linalg.jcublas.kernel.KernelFunctions;
+import org.nd4j.linalg.jcublas.ops.executioner.JCudaExecutioner;
 
+
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 import java.util.ArrayList;
 import java.util.List;
 
-import static jcuda.driver.JCudaDriver.cuMemGetInfo;
 
 /**
  * Wraps the generation of kernel parameters
@@ -57,7 +56,11 @@ public class KernelParamsWrapper implements AutoCloseable {
 
     private boolean closeInvoked = false;
 
+    private boolean closeContext;
+
     private CudaContext context;
+
+    private boolean scalarResult;
 
     /**
      * List of processed kernel parameters ready to be passed to the kernel
@@ -92,6 +95,7 @@ public class KernelParamsWrapper implements AutoCloseable {
      */
     private Multimap<INDArray, CublasPointer> arrayToPointer;
 
+    private int resultLength = 1;
 
 
     /**
@@ -101,7 +105,7 @@ public class KernelParamsWrapper implements AutoCloseable {
      */
     public KernelParamsWrapper setResultArray(INDArray array) {
         CublasPointer resultPointer = arrayToPointer.get(array).iterator().next();
-
+        resultPointer.setResultPointer(true);
         if(resultPointer == null) {
             throw new RuntimeException("Results array must be supplied as a kernel parameter");
         }
@@ -117,12 +121,13 @@ public class KernelParamsWrapper implements AutoCloseable {
      * @param result
      * @return
      */
-    public KernelParamsWrapper setResultOp(Accumulation op, INDArray result) {
+    public KernelParamsWrapper setResultOp(Accumulation op, INDArray result,int...dimension) {
         resultOp = op;
+        resultLength = result.length();
+        scalarResult = (dimension == null || dimension.length < 1 || dimension[0] == Integer.MAX_VALUE);
         setResultArray(result);
         return this;
     }
-
     /**
      * Create a new wrapper for the kernel parameters.
      *
@@ -132,13 +137,28 @@ public class KernelParamsWrapper implements AutoCloseable {
      * To set the array which is the result INDArray, use setResultArray()
      * @param kernelParams
      */
-    public KernelParamsWrapper(Object... kernelParams) {
+    public KernelParamsWrapper(Op op,Object... kernelParams) {
+        this(op,false, kernelParams);
+    }
+    /**
+     * Create a new wrapper for the kernel parameters.
+     *
+     * This wrapper manages the host - and device communication and.
+     *
+     * To set the result on a specific operation, use setResultOp()
+     * To set the array which is the result INDArray, use setResultArray()
+     * @param kernelParams
+     */
+    public KernelParamsWrapper(Op op,boolean closeContext,Object... kernelParams) {
         kernelParameters = new Object[kernelParams.length];
         arrayToPointer = ArrayListMultimap.create();
         pointersToFree = new ArrayList<>();
         resultPointers = new ArrayList<>();
-        context = new CudaContext();
+        context = new CudaContext(closeContext);
         context.initOldStream();
+        context.initStream();
+        this.closeContext = closeContext;
+
         for(int i = 0; i < kernelParams.length; i++) {
             Object arg = kernelParams[i];
 
@@ -174,21 +194,25 @@ public class KernelParamsWrapper implements AutoCloseable {
 
         for(CublasPointer cublasPointer : pointersToFree) {
             if(resultPointers.contains(cublasPointer)) {
-                if(resultOp != null) {
-                    setResultForOp(resultOp, cublasPointer);
+                //sets the result for the buffer
+                //since this ends up being a scalar
+                if(closeContext) {
+                    if(scalarResult && resultOp instanceof Accumulation) {
+                        setResultForOp(resultOp, cublasPointer);
+                    }
+                    else
+                        cublasPointer.copyToHost();
+                    cublasPointer.close();
                 }
                 else
-                    cublasPointer.copyToHost();
-
+                    context.setResultPointer(cublasPointer);
             }
-            cublasPointer.close();
+
         }
 
 
-        long[] free = new long[1];
-        long[] total = new long[1];
-        cuMemGetInfo(free, total);
-
+        if(closeContext)
+            context.destroy();
         closeInvoked = true;
     }
 
@@ -198,47 +222,71 @@ public class KernelParamsWrapper implements AutoCloseable {
      * @param devicePointer
      */
     private void setResultForOp(Op acc, CublasPointer devicePointer) {
-        int threads = PointerUtil.getNumThreads(acc.n(), KernelFunctions.THREADS);
         if (devicePointer.getBuffer().dataType() == DataBuffer.Type.DOUBLE) {
-            double[] data = new double[threads];
-            Pointer get = Pointer.to(data);
+            if(ContextHolder.getInstance().getMemoryStrategy() instanceof PinnedMemoryStrategy) {
+                ByteBuffer buff = devicePointer.getHostPointer().getByteBuffer(0,acc.x().data().getElementSize() * resultLength);
+                buff.order(ByteOrder.nativeOrder());
+                buff.rewind();
+                INDArray setResult = Nd4j.create(Nd4j.createBuffer(buff, DataBuffer.Type.DOUBLE,resultLength));
+                acc.setX(setResult);
+                JCudaExecutioner exec = (JCudaExecutioner) Nd4j.getExecutioner();
+                exec.calculateBlockResult((Accumulation) acc,setResult);
+            }
+            else {
+                double[] data = new double[resultLength];
+                Pointer get = Pointer.to(data);
+                JCuda.cudaMemcpyAsync(
+                        get
+                        , devicePointer.getDevicePointer()
+                        , resultLength * Sizeof.DOUBLE
+                        , cudaMemcpyKind.cudaMemcpyDeviceToHost
+                        , context.getOldStream());
+                context.syncOldStream();
 
-            JCuda.cudaMemcpyAsync(
-                    get
-                    , devicePointer.getDevicePointer()
-                    , threads * Sizeof.DOUBLE
-                    , cudaMemcpyKind.cudaMemcpyDeviceToHost
-                    , context.getOldStream());
-            context.syncOldStream();
-
-
-            if(acc instanceof Accumulation) {
-                Accumulation acc2 = (Accumulation) acc;
-                acc2.setFinalResult(data[0]);
-//				acc2.setFinalResultComplex(new ComplexDouble(data[0],data[1]));
             }
 
 
         }
-        else {
-            float[] data = new float[threads];
-            Pointer get = Pointer.to(data);
-
-            JCuda.cudaMemcpyAsync(
-                    get
-                    , devicePointer.getDevicePointer()
-                    , threads * Sizeof.FLOAT
-                    , cudaMemcpyKind.cudaMemcpyDeviceToHost
-                    , context.getOldStream());
-            context.syncOldStream();
-
-
-            if(acc instanceof Accumulation) {
-                Accumulation acc2 = (Accumulation) acc;
-                acc2.setFinalResult(data[0]);
-                acc2.setFinalResultComplex(new ComplexDouble(data[0],data[1]));
+        else if (devicePointer.getBuffer().dataType() == DataBuffer.Type.FLOAT) {
+            if(ContextHolder.getInstance().getMemoryStrategy() instanceof PinnedMemoryStrategy) {
+                ByteBuffer buff = devicePointer.getHostPointer().getByteBuffer(0,acc.x().data().getElementSize() * resultLength);
+                buff.order(ByteOrder.nativeOrder());
+                buff.rewind();
+                INDArray setResult = Nd4j.create(Nd4j.createBuffer(buff, DataBuffer.Type.FLOAT,resultLength));
+                JCudaExecutioner exec = (JCudaExecutioner) Nd4j.getExecutioner();
+                exec.calculateBlockResult((Accumulation) acc,setResult);
             }
+            else {
+                float[] data = new float[resultLength];
+                Pointer get = Pointer.to(data);
+                JCuda.cudaMemcpyAsync(
+                        get
+                        , devicePointer.getDevicePointer()
+                        , resultLength * Sizeof.FLOAT
+                        , cudaMemcpyKind.cudaMemcpyDeviceToHost
+                        , context.getOldStream());
+                context.syncOldStream();
+
+            }
+
+
+
+
+
         }
     }
+
+    public CudaContext getContext() {
+        return context;
+    }
+
+
+    /**
+     * Sync the streams
+     */
+    public void sync() {
+        context.syncStream();
+    }
+
 
 }

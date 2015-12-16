@@ -105,9 +105,9 @@ public class AdaGrad implements Serializable,GradientUpdater {
     public double getGradient(double gradient, int column, int[] shape) {
         boolean historicalInitialized = false;
         if (this.historicalGradient == null) {
-                this.historicalGradient = Nd4j.ones(shape);
-                historicalInitialized = true;
-            }
+            this.historicalGradient = Nd4j.ones(shape);
+            historicalInitialized = true;
+        }
 
         double sqrtHistory = !historicalInitialized ? Math.sqrt(historicalGradient.getDouble(column)) : historicalGradient.getDouble(column);
         double learningRates = learningRate / (sqrtHistory + epsilon);
@@ -135,7 +135,10 @@ public class AdaGrad implements Serializable,GradientUpdater {
         else
             sqrtHistory = !historicalInitialized ? sqrt(historicalGradient.slice(slice)) : historicalGradient;
         INDArray learningRates = sqrtHistory.add(epsilon).rdivi(learningRate);
-        gradient.muli(learningRates);
+        if(gradient.length() != learningRates.length())
+            gradient.muli(learningRates.slice(slice));
+       else
+            gradient.muli(learningRates);
 
         this.historicalGradient.slice(slice).addi(gradient.mul(gradient));
         numIterations++;
@@ -165,5 +168,53 @@ public class AdaGrad implements Serializable,GradientUpdater {
         }
     }
 
+    @Override
+    public GradientUpdaterAggregator getAggregator(boolean addThis){
+        AdaGradAggregator ag = new AdaGradAggregator();
+        if(addThis) ag.aggregate(this);
+        return ag;
+    }
 
+    public static class AdaGradAggregator implements GradientUpdaterAggregator {
+        private INDArray historicalGradientSum;
+        private double lrSum;
+        private long numIterationsSum = 0;
+        private int count = 0;
+
+        @Override
+        public GradientUpdater getUpdater() {
+            AdaGrad adaGrad = new AdaGrad(lrSum/count);
+            adaGrad.setHistoricalGradient(historicalGradientSum.div(count));
+            adaGrad.setNumIterations((int)(numIterationsSum/count));
+            return adaGrad;
+        }
+
+        @Override
+        public void aggregate(GradientUpdater updater) {
+            if(!(updater instanceof AdaGrad)) throw new UnsupportedOperationException("Cannot aggregate AdaGrad with updater: " + updater);
+            AdaGrad adagrad = (AdaGrad)updater;
+            if(historicalGradientSum ==null){
+                historicalGradientSum = adagrad.historicalGradient.dup();
+                lrSum = adagrad.learningRate;
+                numIterationsSum = adagrad.numIterations;
+            } else {
+                historicalGradientSum.addi(adagrad.historicalGradient);
+                lrSum += adagrad.learningRate;
+                numIterationsSum += adagrad.numIterations;
+            }
+            count++;
+        }
+
+        @Override
+        public GradientUpdaterAggregator combine(GradientUpdaterAggregator other) {
+            if(!(other instanceof AdaGradAggregator))
+                throw new IllegalArgumentException("Cannot combine AdaGradAggregator with aggregator: " + other);
+            AdaGradAggregator aggregator = (AdaGradAggregator)other;
+            historicalGradientSum.addi(aggregator.historicalGradientSum);
+            lrSum += aggregator.lrSum;
+            numIterationsSum += aggregator.numIterationsSum;
+            count += aggregator.count;
+            return this;
+        }
+    }
 }
