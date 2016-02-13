@@ -40,22 +40,23 @@ public class Bias extends BaseAccumulation {
 
     public Bias(INDArray x, INDArray y, INDArray z, int n) {
         super(x, y, z, n);
-        this.passThrough = true;
     }
 
     public Bias(INDArray x, INDArray y, int n) {
         this(x, y, x, n);
-        this.passThrough = true;
     }
 
     public Bias(INDArray x) {
         super(x);
-        this.passThrough = true;
     }
 
     public Bias(INDArray x, INDArray y) {
         super(x, y);
-        this.passThrough = true;
+    }
+
+    @Override
+    public int opNum() {
+        return 2;
     }
 
     @Override
@@ -167,7 +168,12 @@ public class Bias extends BaseAccumulation {
     }
 
     @Override
-    public void exec(){
+    public boolean isPassThrough() {
+        return true;
+    }
+
+    @Override
+    public void exec() {
         this.mean = Nd4j.getExecutioner().execAndReturn(new Mean(x)).getFinalResult().doubleValue();
         INDArray xMinusMean = x.sub(mean);
         double sum = Nd4j.getExecutioner().execAndReturn(new Sum(xMinusMean)).getFinalResult().doubleValue();
@@ -175,7 +181,7 @@ public class Bias extends BaseAccumulation {
     }
 
     @Override
-    public void exec(int... dimension){
+    public void exec(int... dimension) {
         int[] retShape = ArrayUtil.removeIndex(x.shape(), dimension);
         int nOps = x.tensorssAlongDimension(dimension);
         z = Nd4j.create(retShape);

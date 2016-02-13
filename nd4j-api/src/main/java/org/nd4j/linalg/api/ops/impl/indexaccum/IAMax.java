@@ -48,7 +48,7 @@ public class IAMax extends BaseIndexAccumulation {
     }
 
 
-    public int update(double accum, int accumIdx, double x, int xIdx){
+    public int update(double accum, int accumIdx, double x, int xIdx) {
         return (FastMath.abs(accum)>=FastMath.abs(x) ? accumIdx : xIdx);
     }
 
@@ -82,6 +82,11 @@ public class IAMax extends BaseIndexAccumulation {
         return (accum.absoluteValue().doubleValue()>=x.absoluteValue().doubleValue() ? accumIdx : idx);
     }
 
+
+    @Override
+    public int opNum() {
+        return 0;
+    }
 
     @Override
     public String name() {

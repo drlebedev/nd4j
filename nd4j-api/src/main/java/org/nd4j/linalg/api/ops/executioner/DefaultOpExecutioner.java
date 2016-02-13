@@ -24,6 +24,7 @@ import org.nd4j.linalg.api.complex.IComplexNDArray;
 import org.nd4j.linalg.api.complex.IComplexNumber;
 import org.nd4j.linalg.api.ndarray.INDArray;
 import org.nd4j.linalg.api.ops.*;
+import org.nd4j.linalg.api.ops.impl.accum.Variance;
 import org.nd4j.linalg.api.parallel.ParallelExecutioner;
 import org.nd4j.linalg.api.parallel.tasks.Task;
 import org.nd4j.linalg.api.parallel.tasks.TaskFactory;
@@ -36,7 +37,7 @@ import org.nd4j.linalg.util.ArrayUtil;
  *
  * @author Adam Gibson
  */
-public class DefaultOpExecutioner implements OpExecutioner {
+public  class DefaultOpExecutioner implements OpExecutioner {
 
 
     protected ExecutionMode executionMode = ExecutionMode.JAVA;
@@ -195,6 +196,11 @@ public class DefaultOpExecutioner implements OpExecutioner {
     }
 
     @Override
+    public Accumulation execAndReturn(Variance op, boolean biasCorrected) {
+        return null;
+    }
+
+    @Override
     public INDArray execAndReturn(ScalarOp op) {
         return exec(op).z();
     }
@@ -283,6 +289,12 @@ public class DefaultOpExecutioner implements OpExecutioner {
     }
 
     @Override
+    public INDArray exec(Variance accumulation, boolean biasCorrected, int... dimension) {
+        accumulation.setBiasCorrected(biasCorrected);
+        return exec(accumulation,dimension);
+    }
+
+    @Override
     public INDArray exec(IndexAccumulation op, int... dimension) {
         //do op along all dimensions
         if (dimension.length == op.x().rank())
@@ -346,7 +358,7 @@ public class DefaultOpExecutioner implements OpExecutioner {
 
     @Override
     public INDArray execAndReturn(ScalarOp op, int... dimension) {
-        return exec(op, dimension).z();
+        return exec(op, dimension);
     }
 
     @Override
@@ -511,7 +523,7 @@ public class DefaultOpExecutioner implements OpExecutioner {
         INDArray x = op.x();
         INDArray y = op.y();
         INDArray z = op.z();
-        if(!(x instanceof IComplexNDArray) && !(y instanceof IComplexNDArray) && !(z instanceof IComplexNDArray)){
+        if(!(x instanceof IComplexNDArray) && !(y instanceof IComplexNDArray) && !(z instanceof IComplexNDArray)) {
             taskFactory.getBroadcastOpAction(op).invokeBlocking();
         } else {
             //Complex vector op
@@ -529,7 +541,7 @@ public class DefaultOpExecutioner implements OpExecutioner {
                         }
                     }
                 } else {
-                    if(y==null) {
+                    if(y == null) {
                         for (int i = 0; i < nTensors; i++) {
                             IComplexNDArray tx = (IComplexNDArray) cx.tensorAlongDimension(i,op.getDimension());
                             IComplexNDArray tz = (IComplexNDArray) cz.tensorAlongDimension(i,op.getDimension());
@@ -552,5 +564,10 @@ public class DefaultOpExecutioner implements OpExecutioner {
                 throw new UnsupportedOperationException("Complex vector op with real x not supported/implemented");
             }
         }
+    }
+
+    @Override
+    public INDArray exec(BroadcastOp broadcast, int... dimension) {
+       throw new UnsupportedOperationException();
     }
 }

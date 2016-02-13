@@ -115,6 +115,11 @@ public class ManhattanDistance extends BaseAccumulation {
 
 
     @Override
+    public int opNum() {
+        return 0;
+    }
+
+    @Override
     public String name() {
         return "manhattan";
     }
@@ -169,18 +174,23 @@ public class ManhattanDistance extends BaseAccumulation {
 
     @Override
     public Op opForDimension(int index, int dimension) {
+        ManhattanDistance ret;
         if (y() != null)
-            return new ManhattanDistance(x.vectorAlongDimension(index, dimension), y.vectorAlongDimension(index, dimension), x.length());
+            ret = new ManhattanDistance(x.vectorAlongDimension(index, dimension), y.vectorAlongDimension(index, dimension), x.length());
         else
-            return new ManhattanDistance(x.vectorAlongDimension(index, dimension));
-
+            ret = new ManhattanDistance(x.vectorAlongDimension(index, dimension));
+        ret.setApplyFinalTransform(applyFinalTransform());
+        return ret;
     }
 
     @Override
     public Op opForDimension(int index, int... dimension) {
+        ManhattanDistance ret;
         if (y() != null)
-            return new ManhattanDistance(x.tensorAlongDimension(index, dimension), y.tensorAlongDimension(index, dimension), x.length());
+            ret = new ManhattanDistance(x.tensorAlongDimension(index, dimension), y.tensorAlongDimension(index, dimension), x.length());
         else
-            return new ManhattanDistance(x.tensorAlongDimension(index, dimension));
+            ret = new ManhattanDistance(x.tensorAlongDimension(index, dimension));
+        ret.setApplyFinalTransform(applyFinalTransform());
+        return ret;
     }
 }

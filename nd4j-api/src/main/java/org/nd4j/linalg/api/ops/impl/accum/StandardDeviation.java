@@ -49,6 +49,11 @@ public class StandardDeviation extends Variance {
     }
 
     @Override
+    public int opNum() {
+        return 1;
+    }
+
+    @Override
     public String name() {
         return "std";
     }
@@ -65,7 +70,7 @@ public class StandardDeviation extends Variance {
     }
 
     @Override
-    public Op opForDimension(int index, int... dimension) {
+    public Variance opForDimension(int index, int... dimension) {
         INDArray xAlongDimension = x.tensorAlongDimension(index, dimension);
 
         if (y() != null)
@@ -90,14 +95,14 @@ public class StandardDeviation extends Variance {
         int[] retShape = ArrayUtil.removeIndex(x.shape(), dimension);
         int nOps = x.tensorssAlongDimension(dimension);
         z = Nd4j.create(retShape);
-        for( int i=0; i<nOps; i++ ){
-            double d = Nd4j.getExecutioner().execAndReturn((StandardDeviation)opForDimension(i,dimension)).getFinalResult().doubleValue();
+        for( int i = 0; i < nOps; i++) {
+            double d = Nd4j.getExecutioner().execAndReturn((StandardDeviation) opForDimension(i,dimension)).getFinalResult().doubleValue();
             z.putScalar(i,d);
         }
     }
 
     @Override
-    public double getAndSetFinalResult(double accum){
+    public double getAndSetFinalResult(double accum) {
         //stdev is sqrt of variance:
         double d = FastMath.sqrt(super.getAndSetFinalResult(accum));
         this.finalResult = d;
