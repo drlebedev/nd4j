@@ -27,7 +27,7 @@ import org.nd4j.linalg.api.complex.IComplexNumber;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.io.Serializable;
-import java.nio.ByteBuffer;
+import java.nio.*;
 import java.util.Collection;
 
 /**
@@ -43,6 +43,7 @@ public interface DataBuffer extends Serializable {
         FLOAT,
         INT
     }
+
 
     /**
      * Direct (off heap) and heap allocation
@@ -60,7 +61,14 @@ public interface DataBuffer extends Serializable {
     }
 
 
-
+    /**
+     * Returns true if the underlying data source
+     * is the same for both buffers (referential equals)
+     * @param buffer whether the buffer is the same underlying data or not
+     * @return true if both data buffers have the same
+     * underlying data SOURCE
+     */
+    boolean sameUnderlyingData(DataBuffer buffer);
 
     /**
      * Returns the backing array
@@ -113,6 +121,14 @@ public interface DataBuffer extends Serializable {
     ByteBuf asNetty();
 
     /**
+     * Underlying buffer:
+     * This is meant for a data buffer
+     * to be a view of another data buffer
+     * @return
+     */
+    DataBuffer underlyingDataBuffer();
+
+    /**
      * Copies from
      * the given buffer
      * at the specified stride
@@ -155,7 +171,7 @@ public interface DataBuffer extends Serializable {
      *
      * @return the number of bytes for each individual element
      */
-    public int getElementSize();
+    int getElementSize();
 
     /**
      * Remove the referenced id if it exists
@@ -318,7 +334,7 @@ public interface DataBuffer extends Serializable {
      *
      * @return the buffer as a float
      */
-     float[] asFloat();
+    float[] asFloat();
 
     /**
      * Return the buffer as a double array
@@ -328,7 +344,7 @@ public interface DataBuffer extends Serializable {
      *
      * @return the buffer as a float
      */
-     double[] asDouble();
+    double[] asDouble();
 
     /**
      * Return the buffer as an int  array
@@ -338,7 +354,7 @@ public interface DataBuffer extends Serializable {
      *
      * @return the buffer as a float
      */
-     int[] asInt();
+    int[] asInt();
 
     /**
      * Get element i in the buffer as a double
@@ -346,7 +362,7 @@ public interface DataBuffer extends Serializable {
      * @param i the element to getFloat
      * @return the element at this index
      */
-     double getDouble(int i);
+    double getDouble(int i);
 
     /**
      * Get element i in the buffer as a double
@@ -354,7 +370,7 @@ public interface DataBuffer extends Serializable {
      * @param i the element to getFloat
      * @return the element at this index
      */
-     float getFloat(int i);
+    float getFloat(int i);
 
     /**
      * Get element i in the buffer as a double
@@ -362,7 +378,7 @@ public interface DataBuffer extends Serializable {
      * @param i the element to getFloat
      * @return the element at this index
      */
-     Number getNumber(int i);
+    Number getNumber(int i);
 
 
     /**
@@ -422,6 +438,12 @@ public interface DataBuffer extends Serializable {
      */
     int length();
 
+    /**
+     * Returns the length of the buffer
+     *
+     * @return the length of the buffer
+     */
+    int underlyingLength();
     /**
      * Returns the offset of the buffer
      *

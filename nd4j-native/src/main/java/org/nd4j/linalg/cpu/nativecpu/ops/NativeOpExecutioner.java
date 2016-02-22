@@ -48,6 +48,10 @@ public class NativeOpExecutioner extends DefaultOpExecutioner {
             IndexAccumulation iac = (IndexAccumulation) op;
             exec(iac);  //Currently using DefaultOpExecutioner
         }
+        else if(op instanceof BroadcastOp) {
+            BroadcastOp broadcastOp = (BroadcastOp) op;
+            exec(broadcastOp,broadcastOp.getDimension());
+        }
 
         return op;
     }
@@ -55,6 +59,34 @@ public class NativeOpExecutioner extends DefaultOpExecutioner {
 
     @Override
     public INDArray exec(IndexAccumulation op, int... dimension) {
+        for(int i = 0; i < dimension.length; i++) {
+            if(dimension[i] < 0)
+                dimension[i] += op.x().rank();
+        }
+        //do op along all dimensions
+        if (dimension.length == op.x().rank())
+            dimension = new int[]{Integer.MAX_VALUE};
+
+
+
+        int[] retShape = Shape.wholeArrayDimension(dimension) ? new int[] {1,1} : ArrayUtil.removeIndex(op.x().shape(), dimension);
+        //ensure vector is proper shape
+        if (retShape.length == 1) {
+            if (dimension[0] == 0)
+                retShape = new int[]{1, retShape[0]};
+            else
+                retShape = new int[]{retShape[0], 1};
+        } else if (retShape.length == 0) {
+            retShape = new int[]{1, 1};
+        }
+
+        INDArray ret = Nd4j.valueArrayOf(retShape,op.zeroDouble());
+        op.setZ(ret);
+        //do op along all dimensions
+        if (dimension.length == op.x().rank())
+            dimension = new int[]{Integer.MAX_VALUE};
+
+
         java.nio.IntBuffer dimensionBuffer = Shape.toBuffer(dimension);
         if(op.x().data().dataType() == DataBuffer.Type.DOUBLE) {
             loop.execIndexReduce(op.opNum(),
@@ -104,6 +136,15 @@ public class NativeOpExecutioner extends DefaultOpExecutioner {
 
     @Override
     public INDArray exec(Accumulation op, int... dimension) {
+        for(int i = 0; i < dimension.length; i++) {
+            if(dimension[i] < 0)
+                dimension[i] += op.x().rank();
+        }
+        //do op along all dimensions
+        if (dimension.length == op.x().rank())
+            dimension = new int[]{Integer.MAX_VALUE};
+
+
         int[] retShape = Shape.wholeArrayDimension(dimension) ? new int[] {1,1} : ArrayUtil.removeIndex(op.x().shape(), dimension);
         //ensure vector is proper shape
         if (retShape.length == 1) {
@@ -117,9 +158,6 @@ public class NativeOpExecutioner extends DefaultOpExecutioner {
 
         INDArray ret = Nd4j.valueArrayOf(retShape,op.zeroDouble());
         op.setZ(ret);
-        //do op along all dimensions
-        if (dimension.length == op.x().rank())
-            dimension = new int[]{Integer.MAX_VALUE};
 
         java.nio.IntBuffer dimensionBuffer = Shape.toBuffer(dimension);
         if(op.x().data().dataType() == DataBuffer.Type.DOUBLE) {
@@ -285,7 +323,7 @@ public class NativeOpExecutioner extends DefaultOpExecutioner {
 
             if(op.x().data().dataType() == DataBuffer.Type.DOUBLE) {
                 if(op.y() != null) {
-                    if(op.x().elementWiseStride() >=1 && op.y().elementWiseStride() >= 1) {
+                    if(op.x().elementWiseStride() >=1 && op.y().elementWiseStride() >= 1 && op.x().ordering() == op.y().ordering() && op.x().ordering() == op.z().ordering()) {
                         loop.execPairwiseTransform
                                 (op.opNum(),
                                         op.x().data().asNioDouble(),
@@ -302,11 +340,11 @@ public class NativeOpExecutioner extends DefaultOpExecutioner {
                         loop.execPairwiseTransform
                                 (op.opNum(),
                                         op.x().data().asNioDouble(),
-                                        op.x().elementWiseStride(),
+                                        op.x().shapeInfo(),
                                         op.y().data().asNioDouble(),
-                                        op.y().elementWiseStride(),
+                                        op.y().shapeInfo(),
                                         op.z().data().asNioDouble(),
-                                        op.z().elementWiseStride(),
+                                        op.z().shapeInfo(),
                                         (DoubleBuffer) op.extraArgsBuff(),
                                         op.n());
                     }
@@ -334,7 +372,7 @@ public class NativeOpExecutioner extends DefaultOpExecutioner {
             }
             else {
                 if(op.y() != null) {
-                    if(op.x().elementWiseStride() >=1 && op.y().elementWiseStride() >= 1) {
+                    if(op.x().elementWiseStride() >=1 && op.y().elementWiseStride() >= 1 && op.x().ordering() == op.y().ordering()) {
                         loop.execPairwiseTransform
                                 (op.opNum(),
                                         op.x().data().asNioFloat(),
@@ -351,11 +389,11 @@ public class NativeOpExecutioner extends DefaultOpExecutioner {
                         loop.execPairwiseTransform
                                 (op.opNum(),
                                         op.x().data().asNioFloat(),
-                                        op.x().elementWiseStride(),
+                                        op.x().shapeInfo(),
                                         op.y().data().asNioFloat(),
-                                        op.y().elementWiseStride(),
+                                        op.y().shapeInfo(),
                                         op.z().data().asNioFloat(),
-                                        op.z().elementWiseStride(),
+                                        op.z().shapeInfo(),
                                         (FloatBuffer) op.extraArgsBuff(),
                                         op.n());
                     }

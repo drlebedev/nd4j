@@ -1,18 +1,13 @@
 package org.nd4j.linalg.checkutil;
 
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.List;
-
 import org.apache.commons.math3.linear.BlockRealMatrix;
 import org.apache.commons.math3.linear.RealMatrix;
-import org.apache.commons.math3.util.Pair;
 import org.nd4j.linalg.api.buffer.DataBuffer;
 import org.nd4j.linalg.api.ndarray.INDArray;
 import org.nd4j.linalg.api.shape.Shape;
 import org.nd4j.linalg.factory.Nd4j;
-import org.nd4j.linalg.indexing.NDArrayIndex;
+
+import java.util.Arrays;
 
 /**@author Alex Black
  */
@@ -239,6 +234,20 @@ public class CheckUtil {
 		}
 		return out;
 	}
+
+    public static INDArray convertFromApacheMatrix(RealMatrix matrix){
+        int[] shape = new int[]{matrix.getRowDimension(),matrix.getColumnDimension()};
+        INDArray out = Nd4j.create(shape);
+        for( int i=0; i<shape[0]; i++ ){
+            for( int j=0; j<shape[1]; j++ ){
+                double value = matrix.getEntry(i,j);
+                out.putScalar(new int[]{i,j}, value);
+            }
+        }
+        return out;
+    }
+
+
 
 	public static void printFailureDetails(INDArray first, INDArray second, RealMatrix expected, INDArray actual, INDArray onCopies, String op){
         System.out.println("\nFactory: " + Nd4j.factory().getClass() + "\n");
