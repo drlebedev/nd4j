@@ -31,10 +31,7 @@ import org.nd4j.linalg.util.ArrayUtil;
 import org.nd4j.linalg.util.FeatureUtil;
 
 import java.io.File;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.Random;
+import java.util.*;
 
 import static org.junit.Assert.*;
 
@@ -335,6 +332,160 @@ public class DataSetTest extends BaseNd4jTest {
                 double actLMask = labelsMask.getDouble(i,j);
                 assertEquals(expectedF, actFMask, 0.0);
                 assertEquals(expectedL, actLMask, 0.0);
+            }
+        }
+    }
+
+    @Test
+    public void testCnnMerge(){
+        //Test merging of CNN data sets
+        int nOut = 3;
+        int width = 5;
+        int height = 4;
+        int depth = 3;
+        int nExamples1 = 2;
+        int nExamples2 = 1;
+
+        int length1 = width*height*depth*nExamples1;
+        int length2 = width*height*depth*nExamples2;
+
+        INDArray first = Nd4j.linspace(1,length1,length1).reshape('c',nExamples1,depth,width,height);
+        INDArray second = Nd4j.linspace(1,length2,length2).reshape('c',nExamples2,depth,width,height).addi(0.1);
+
+        INDArray labels1 = Nd4j.linspace(1,nExamples1*nOut,nExamples1*nOut).reshape('c',nExamples1,nOut);
+        INDArray labels2 = Nd4j.linspace(1,nExamples2*nOut,nExamples2*nOut).reshape('c',nExamples2,nOut);
+
+        DataSet ds1 = new DataSet(first,labels1);
+        DataSet ds2 = new DataSet(second,labels2);
+
+        DataSet merged = DataSet.merge(Arrays.asList(ds1,ds2));
+
+        INDArray fMerged = merged.getFeatureMatrix();
+        INDArray lMerged = merged.getLabels();
+
+        assertArrayEquals(new int[]{nExamples1+nExamples2,depth,width,height}, fMerged.shape());
+        assertArrayEquals(new int[]{nExamples1+nExamples2,nOut}, lMerged.shape());
+
+        assertEquals(first, fMerged.get(NDArrayIndex.interval(0,nExamples1), NDArrayIndex.all(), NDArrayIndex.all(), NDArrayIndex.all()));
+        assertEquals(second, fMerged.get(NDArrayIndex.interval(nExamples1,nExamples1+nExamples2), NDArrayIndex.all(), NDArrayIndex.all(), NDArrayIndex.all()));
+        assertEquals(labels1, lMerged.get(NDArrayIndex.interval(0,nExamples1), NDArrayIndex.all()));
+        assertEquals(labels2, lMerged.get(NDArrayIndex.interval(nExamples1,nExamples1+nExamples2), NDArrayIndex.all()));
+    }
+
+    @Test
+    public void testMixedRnn2d(){
+        //RNN input with 2d label output
+        //Basic test for time series, all of the same length + no masking arrays
+        int numExamples = 10;
+        int inSize = 13;
+        int labelSize = 5;
+        int tsLength = 15;
+
+        Nd4j.getRandom().setSeed(12345);
+        List<DataSet> list = new ArrayList<>(numExamples);
+        for( int i=0; i<numExamples; i++ ){
+            INDArray in = Nd4j.rand(new int[]{1,inSize,tsLength});
+            INDArray out = Nd4j.rand(new int[]{1,labelSize});
+            list.add(new DataSet(in,out));
+        }
+
+        DataSet merged = DataSet.merge(list);
+        assertEquals(numExamples,merged.numExamples());
+
+        INDArray f = merged.getFeatures();
+        INDArray l = merged.getLabels();
+        assertArrayEquals(new int[]{numExamples, inSize, tsLength}, f.shape());
+        assertArrayEquals(new int[]{numExamples, labelSize}, l.shape());
+
+        for( int i=0; i<numExamples; i++ ){
+            DataSet exp = list.get(i);
+            INDArray expIn = exp.getFeatureMatrix();
+            INDArray expL = exp.getLabels();
+
+            INDArray fSubset = f.get(NDArrayIndex.interval(i,i+1), NDArrayIndex.all(), NDArrayIndex.all());
+            INDArray lSubset = l.get(NDArrayIndex.interval(i,i+1), NDArrayIndex.all());
+
+            assertEquals(expIn, fSubset);
+            assertEquals(expL,lSubset);
+        }
+    }
+
+    @Test
+    public void testShuffle4d() {
+        int nSamples = 10;
+        int nChannels = 3;
+        int imgRows = 4;
+        int imgCols = 2;
+        
+        int nLabels = 5;
+        int[] shape = new int[]{nSamples, nChannels, imgRows, imgCols};
+
+        int entries = nSamples * nChannels * imgRows * imgCols;
+        int labels = nSamples * nLabels;
+        
+        INDArray ds_data = Nd4j.linspace(1, entries, entries).reshape(nSamples, nChannels, imgRows, imgCols);
+        INDArray ds_labels = Nd4j.linspace(1, labels, labels).reshape(nSamples, nLabels);
+        DataSet ds = new DataSet(ds_data, ds_labels);
+        ds.shuffle();
+        for (int dim = 1; dim < 4; dim++) {
+            //get tensor along dimension - the order in every dimension but zero should be preserved
+            for (int tensorNum = 0; tensorNum < entries / shape[dim]; tensorNum++) {
+                for (int i = 0, j = 1; j < shape[dim]; i++, j++) {
+                    int f_element = ds.getFeatures().tensorAlongDimension(tensorNum, dim).getInt(i);
+                    int f_next_element = ds.getFeatures().tensorAlongDimension(tensorNum, dim).getInt(j);
+                    int f_element_diff = f_next_element - f_element;
+                    assertTrue(f_element_diff == ds_data.stride(dim)); 
+                }
+            }
+        }
+    }
+
+    @Test
+    public void testShuffleNd() {
+        int numDims = 7;
+        int nLabels = 3;
+        Random r = new Random();
+
+        
+        int[] shape = new int[numDims];
+        int entries = 1;
+        for (int i=0;i<numDims;i++) {
+            //randomly generating shapes bigger than 1 
+            shape[i] = r.nextInt(4)+ 2;
+            entries *= shape[i];
+        }
+        int labels = shape[0] * nLabels;
+
+        INDArray ds_data = Nd4j.linspace(1, entries, entries).reshape(shape);
+        INDArray ds_labels = Nd4j.linspace(1, labels, labels).reshape(shape[0],nLabels);
+
+        DataSet ds = new DataSet(ds_data, ds_labels);
+        ds.shuffle();
+
+        //Checking Nd dataset which is the data
+        for (int dim = 1; dim < numDims; dim++) {
+            //get tensor along dimension - the order in every dimension but zero should be preserved
+            for (int tensorNum = 0; tensorNum < ds_data.tensorssAlongDimension(dim); tensorNum++) {
+                //the difference between consecutive elements should be equal to the stride
+                for (int i = 0, j = 1; j < shape[dim]; i++, j++) {
+                    int f_element = ds.getFeatures().tensorAlongDimension(tensorNum, dim).getInt(i);
+                    int f_next_element = ds.getFeatures().tensorAlongDimension(tensorNum, dim).getInt(j);
+                    int f_element_diff = f_next_element - f_element;
+                    assertTrue(f_element_diff == ds_data.stride(dim));
+                }
+            }
+        }
+
+        //Checking 2d, features
+        int dim = 1;
+        //get tensor along dimension - the order in every dimension but zero should be preserved
+        for (int tensorNum = 0; tensorNum < ds_labels.tensorssAlongDimension(dim); tensorNum++) {
+            //the difference between consecutive elements should be equal to the stride
+            for (int i = 0, j = 1; j < nLabels; i++, j++) {
+                int l_element = ds.getLabels().tensorAlongDimension(tensorNum, dim).getInt(i);
+                int l_next_element = ds.getLabels().tensorAlongDimension(tensorNum, dim).getInt(j);
+                int l_element_diff = l_next_element - l_element;
+                assertTrue(l_element_diff == ds_labels.stride(dim));
             }
         }
     }

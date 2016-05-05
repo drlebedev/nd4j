@@ -12,7 +12,7 @@ import org.nd4j.linalg.factory.Nd4j;
 import org.nd4j.linalg.util.ArrayUtil;
 import org.nd4j.nativeblas.NativeOps;
 
-
+import java.util.Arrays;
 
 
 /**
@@ -28,9 +28,6 @@ public class NativeOpExecutioner extends DefaultOpExecutioner {
 
     @Override
     public Op exec(Op op) {
-        if(op.isPassThrough()  || executionMode() == ExecutionMode.JAVA)
-            return super.exec(op);
-
         if(op instanceof ScalarOp) {
             ScalarOp s = (ScalarOp) op;
             exec(s);
@@ -43,7 +40,7 @@ public class NativeOpExecutioner extends DefaultOpExecutioner {
             Accumulation ac = (Accumulation) op;
             exec(ac);
         }
-        else if(op instanceof IndexAccumulation){
+        else if(op instanceof IndexAccumulation) {
             IndexAccumulation iac = (IndexAccumulation) op;
             exec(iac);  //Currently using DefaultOpExecutioner
         }
@@ -58,6 +55,7 @@ public class NativeOpExecutioner extends DefaultOpExecutioner {
 
     @Override
     public INDArray exec(IndexAccumulation op, int... dimension) {
+        Arrays.sort(dimension);
         for(int i = 0; i < dimension.length; i++) {
             if(dimension[i] < 0)
                 dimension[i] += op.x().rank();
@@ -69,6 +67,10 @@ public class NativeOpExecutioner extends DefaultOpExecutioner {
 
 
         int[] retShape = Shape.wholeArrayDimension(dimension) ? new int[] {1,1} : ArrayUtil.removeIndex(op.x().shape(), dimension);
+        if(op.x().isVector() && op.x().length() == ArrayUtil.prod(retShape))
+            return op.x();
+
+
         //ensure vector is proper shape
         if (retShape.length == 1) {
             if (dimension[0] == 0)
@@ -145,6 +147,8 @@ public class NativeOpExecutioner extends DefaultOpExecutioner {
 
     @Override
     public INDArray exec(Accumulation op, int... dimension) {
+        Arrays.sort(dimension);
+
         for(int i = 0; i < dimension.length; i++) {
             if(dimension[i] < 0)
                 dimension[i] += op.x().rank();
@@ -165,6 +169,9 @@ public class NativeOpExecutioner extends DefaultOpExecutioner {
             retShape = new int[]{1, 1};
         }
 
+        if(op.x().isVector() && op.x().length() == ArrayUtil.prod(retShape))
+            return op.noOp();
+
         INDArray ret = Nd4j.valueArrayOf(retShape,op.zeroDouble());
         op.setZ(ret);
         long[] dummy = new long[1];
@@ -180,15 +187,16 @@ public class NativeOpExecutioner extends DefaultOpExecutioner {
                             getAddressForExtraArgs(op), true));
                 }
                 else {
-                    loop.execReduceDouble(
+                    Variance var = (Variance) op;
+                    loop.execSummaryStatsDouble(
                             dummy,
                             op.opNum(),
                             op.x().data().address(),
                             op.x().shapeInfoDataBuffer().address(),
                             getAddressForExtraArgs(op),
                             op.z().data().address(),
-                            op.z().shapeInfoDataBuffer().address(),
-                            dimensionAddress, dimension.length);
+                            op.z().shapeInfoDataBuffer().address(),dimensionAddress,dimension.length,
+                            var.isBiasCorrected());
                 }
 
             }
@@ -324,7 +332,7 @@ public class NativeOpExecutioner extends DefaultOpExecutioner {
         else {
             long[] dummy = new long[1];
             if(op.x().data().dataType() == DataBuffer.Type.DOUBLE) {
-                if(op.x().elementWiseStride() >= 1 && op.z().elementWiseStride() >= 1) {
+                if(op.x(). elementWiseStride() >= 1 && !op.isExecSpecial() && op.z(). elementWiseStride() >= 1 && !op.isExecSpecial()) {
                     loop.execScalarDouble(
                             dummy,
                             op.opNum(),
@@ -348,7 +356,7 @@ public class NativeOpExecutioner extends DefaultOpExecutioner {
                             getAddressForExtraArgs(op));
             }
             else {
-                if(op.x().elementWiseStride() >= 1 && op.z().elementWiseStride() >= 1) {
+                if(op.x(). elementWiseStride() >= 1 && !op.isExecSpecial() && op.z(). elementWiseStride() >= 1 && !op.isExecSpecial()) {
                     loop.execScalarFloat(
                             dummy,
                             op.opNum(),
@@ -382,14 +390,10 @@ public class NativeOpExecutioner extends DefaultOpExecutioner {
     }
 
     private void exec(TransformOp op) {
-        if(op.x() instanceof IComplexNDArray ||  executionMode() == ExecutionMode.JAVA) {
-            super.exec(op);
-        }
-        else {
             long[] dummy = new long[1];
             if(op.x().data().dataType() == DataBuffer.Type.DOUBLE) {
                 if(op.y() != null) {
-                    if(op.x().elementWiseStride() >=1 && op.y().elementWiseStride() >= 1 && op.x().ordering() == op.y().ordering() && op.x().ordering() == op.z().ordering()) {
+                    if(op.x().elementWiseStride() >=1 && op.y(). elementWiseStride() >= 1 && op.x().elementWiseStride() == op.y(). elementWiseStride()  && !op.isExecSpecial() && op.x().ordering() == op.y().ordering() && op.x().ordering() == op.z().ordering()) {
                         loop.execPairwiseTransformDouble(
                                 dummy,
                                 op.opNum(),
@@ -418,7 +422,7 @@ public class NativeOpExecutioner extends DefaultOpExecutioner {
 
                 }
                 else {
-                    if(op.x().elementWiseStride() >= 1) {
+                    if(op.x(). elementWiseStride() >= 1 && !op.isExecSpecial() && !op.isExecSpecial() && op.x().ordering() == op.z().ordering()) {
                         loop.execTransformDouble(
                                 dummy,
                                 op.opNum(),
@@ -443,7 +447,7 @@ public class NativeOpExecutioner extends DefaultOpExecutioner {
             }
             else {
                 if(op.y() != null) {
-                    if(op.x().elementWiseStride() >=1 && op.y().elementWiseStride() >= 1 && op.x().ordering() == op.y().ordering()) {
+                    if(op.x().elementWiseStride() >=1 && op.y(). elementWiseStride() >= 1 && op.x().elementWiseStride() == op.y(). elementWiseStride() && !op.isExecSpecial() && op.x().ordering() == op.y().ordering()) {
                         loop.execPairwiseTransformFloat
                                 (dummy,op.opNum(),
                                         op.x().data().address(),
@@ -471,7 +475,7 @@ public class NativeOpExecutioner extends DefaultOpExecutioner {
 
                 }
                 else {
-                    if(op.x().elementWiseStride() >= 1) {
+                    if(op.x(). elementWiseStride() >= 1 && !op.isExecSpecial() && op.x().ordering() == op.z().ordering()) {
                         loop.execTransformFloat(dummy,op.opNum(),
                                 op.x().data().address(),
                                 op.x().elementWiseStride(),
@@ -492,11 +496,13 @@ public class NativeOpExecutioner extends DefaultOpExecutioner {
 
                 }
             }
-        }
+
     }
 
     @Override
     public INDArray exec(BroadcastOp op,int...dimension) {
+        Arrays.sort(dimension);
+
         long[] dummy = new long[1];
         long dimensionAddress = Nd4j.createBuffer(dimension).address();
         if(op.x().data().dataType() == DataBuffer.Type.DOUBLE) {
@@ -513,7 +519,8 @@ public class NativeOpExecutioner extends DefaultOpExecutioner {
                     ,op.x().shapeInfoDataBuffer().address(),
                     op.y().data().address(),
                     op.y().shapeInfoDataBuffer().address()
-                    , op.z().data().address(), op.z().shapeInfoDataBuffer().address(),
+                    , op.z().data().address(),
+                    op.z().shapeInfoDataBuffer().address(),
                     dimensionAddress, dimension.length);
         }
 
@@ -602,7 +609,8 @@ public class NativeOpExecutioner extends DefaultOpExecutioner {
                             dummy,
                             op.opNum(),
                             op.x().data().address()
-                            ,op.x().shapeInfoDataBuffer().address(),  getAddressForExtraArgs(op)));
+                            ,op.x().shapeInfoDataBuffer().address(),
+                            getAddressForExtraArgs(op)));
                 }
             }
         }

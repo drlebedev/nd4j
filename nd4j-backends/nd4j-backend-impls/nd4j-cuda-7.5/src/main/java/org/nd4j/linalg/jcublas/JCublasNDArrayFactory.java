@@ -19,23 +19,34 @@
 
 package org.nd4j.linalg.jcublas;
 
+import org.nd4j.jita.allocator.impl.AtomicAllocator;
+import org.nd4j.jita.allocator.pointers.CudaPointer;
+import org.nd4j.jita.allocator.utils.AllocationUtils;
 import org.nd4j.linalg.api.buffer.DataBuffer;
 import org.nd4j.linalg.api.complex.IComplexDouble;
 import org.nd4j.linalg.api.complex.IComplexFloat;
 import org.nd4j.linalg.api.complex.IComplexNDArray;
 import org.nd4j.linalg.api.complex.IComplexNumber;
 import org.nd4j.linalg.api.ndarray.INDArray;
+import org.nd4j.linalg.api.shape.Shape;
 import org.nd4j.linalg.factory.BaseNDArrayFactory;
 import org.nd4j.linalg.factory.Nd4j;
 import org.nd4j.linalg.jcublas.blas.JcublasLapack;
 import org.nd4j.linalg.jcublas.blas.JcublasLevel1;
 import org.nd4j.linalg.jcublas.blas.JcublasLevel2;
 import org.nd4j.linalg.jcublas.blas.JcublasLevel3;
+import org.nd4j.linalg.jcublas.buffer.AddressRetriever;
 import org.nd4j.linalg.jcublas.complex.ComplexDouble;
 import org.nd4j.linalg.jcublas.complex.ComplexFloat;
 import org.nd4j.linalg.jcublas.complex.JCublasComplexNDArray;
+import org.nd4j.linalg.jcublas.context.CudaContext;
+import org.nd4j.linalg.jcublas.ops.executioner.JCudaExecutioner;
 import org.nd4j.linalg.util.ArrayUtil;
+import org.nd4j.nativeblas.NativeOps;
+import org.nd4j.nativeblas.NativeOpsHolder;
 
+import java.util.Arrays;
+import java.util.Collection;
 import java.util.List;
 
 /**
@@ -45,6 +56,7 @@ import java.util.List;
  * @author mjk
  */
 public class JCublasNDArrayFactory extends BaseNDArrayFactory {
+    private NativeOps nativeOps = NativeOpsHolder.getInstance().getDeviceNativeOps();
 
 
     public JCublasNDArrayFactory() {
@@ -429,5 +441,73 @@ public class JCublasNDArrayFactory extends BaseNDArrayFactory {
     @Override
     public INDArray create(DataBuffer buffer, int[] shape, int offset) {
         return new JCublasNDArray(buffer, shape, offset);
+    }
+
+
+    @Override
+    public INDArray toFlattened(Collection<INDArray> matrices) {
+        return this.toFlattened(order(),matrices);
+    }
+
+    @Override
+    public INDArray toFlattened(char order, Collection<INDArray> matrices) {
+        int length = 0;
+        for (INDArray m : matrices)
+            length += m.length();
+        INDArray ret = Nd4j.create(new int[]{1,length},order);
+        int linearIndex = 0;
+
+        AtomicAllocator allocator = AtomicAllocator.getInstance();
+
+
+        for(INDArray m : matrices) {
+
+            CudaContext context =  allocator.getFlowController().prepareAction(ret, m);
+
+            if(m.ordering() == order && ret.elementWiseStride() == m.elementWiseStride() && ret.elementWiseStride() == 1) {
+                // do memcpy in proper direction and forget about that
+                allocator.memcpyAsync(ret.data(),new CudaPointer(allocator.getHostPointer(m).address()), AllocationUtils.getRequiredMemory(AllocationUtils.buildAllocationShape(m)), linearIndex * (m.data().dataType() == DataBuffer.Type.DOUBLE ? 8 : 4));
+                linearIndex += m.length();
+            } else {
+                long[] extras = new long[]{ AddressRetriever.retrieveHostAddress(m.shapeInfoDataBuffer()), context.getOldStream().getNativePointer(), allocator.getDeviceId(), context.getBufferAllocation(), context.getBufferReduction(), context.getBufferScalar()};
+
+                if (m.data().dataType() == DataBuffer.Type.DOUBLE) {
+                    nativeOps.flattenDouble(
+                            extras,
+                            linearIndex,
+                            order,
+                            allocator.getPointer(ret, context).address(),
+                            allocator.getPointer(ret.shapeInfoDataBuffer(), context).address(),
+                            allocator.getPointer(m, context).address(),
+                            allocator.getPointer(m.shapeInfoDataBuffer(), context).address());
+                } else if (m.data().dataType() == DataBuffer.Type.FLOAT) {
+                    nativeOps.flattenFloat(
+                            extras,
+                            linearIndex,
+                            order,
+                            allocator.getPointer(ret, context).address(),
+                            allocator.getPointer(ret.shapeInfoDataBuffer(), context).address(),
+                            allocator.getPointer(m, context).address(),
+                            allocator.getPointer(m.shapeInfoDataBuffer(), context).address());
+
+                } else {
+                    throw new UnsupportedOperationException("Illegal data type for copy");
+                }
+
+
+
+                //Works for all cases...
+
+               /* NdIndexIterator iter = new NdIndexIterator(order, m.shape());
+                while (iter.hasNext()) {
+                    ret.putScalar(linearIndex++, m.getDouble(iter.next()));
+                }*/
+
+                linearIndex += m.length();
+            }
+
+            if (ret != null) allocator.registerAction(context, ret, m);
+        }
+        return ret;
     }
 }

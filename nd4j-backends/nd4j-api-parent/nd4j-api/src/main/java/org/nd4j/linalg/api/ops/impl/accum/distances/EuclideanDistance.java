@@ -34,20 +34,32 @@ public class EuclideanDistance extends BaseAccumulation {
     public EuclideanDistance() {
     }
 
-    public EuclideanDistance(INDArray x, INDArray y, INDArray z, int n) {
+    public EuclideanDistance(INDArray x, INDArray y, INDArray z, long n) {
         super(x, y, z, n);
+        extraArgs = new Object[2];
+        extraArgs[0] = 0.0f;
+        extraArgs[1] = 0.0f;
     }
 
-    public EuclideanDistance(INDArray x, INDArray y, int n) {
+    public EuclideanDistance(INDArray x, INDArray y, long n) {
         super(x, y, n);
+        extraArgs = new Object[2];
+        extraArgs[0] = 0.0f;
+        extraArgs[1] = 0.0f;
     }
 
     public EuclideanDistance(INDArray x) {
         super(x);
+        extraArgs = new Object[2];
+        extraArgs[0] = 0.0f;
+        extraArgs[1] = 0.0f;
     }
 
     public EuclideanDistance(INDArray x, INDArray y) {
         super(x, y);
+        extraArgs = new Object[2];
+        extraArgs[0] = 0.0f;
+        extraArgs[1] = 0.0f;
     }
 
     @Override
@@ -233,12 +245,12 @@ public class EuclideanDistance extends BaseAccumulation {
     }
 
     @Override
-    public double calculateFinalResult(double accum, int n){
+    public double calculateFinalResult(double accum, long n){
         return FastMath.sqrt(accum);
     }
 
     @Override
-    public float calculateFinalResult(float accum, int n){
+    public float calculateFinalResult(float accum, long n){
         return (float)FastMath.sqrt(accum);
     }
 }

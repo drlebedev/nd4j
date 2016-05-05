@@ -32,11 +32,14 @@ import org.nd4j.linalg.util.ArrayUtil;
  * @author Adam Gibson
  */
 public class StandardDeviation extends Variance {
+    public StandardDeviation(INDArray x, boolean biasCorrected) {
+        super(x, biasCorrected);
+    }
 
     public StandardDeviation() {
     }
 
-    public StandardDeviation(INDArray x, INDArray y, int n) {
+    public StandardDeviation(INDArray x, INDArray y, long n) {
         super(x, y, n);
     }
 
@@ -123,12 +126,12 @@ public class StandardDeviation extends Variance {
     }
 
     @Override
-    public double calculateFinalResult(double accum, int n) {
+    public double calculateFinalResult(double accum, long n) {
         return FastMath.sqrt(super.calculateFinalResult(accum,n));
     }
 
     @Override
-    public float calculateFinalResult(float accum, int n) {
+    public float calculateFinalResult(float accum, long n) {
         return (float) FastMath.sqrt(super.calculateFinalResult(accum,n));
     }
 }

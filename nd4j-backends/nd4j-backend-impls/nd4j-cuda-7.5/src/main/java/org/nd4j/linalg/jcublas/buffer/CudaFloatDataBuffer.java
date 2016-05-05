@@ -20,8 +20,7 @@
 package org.nd4j.linalg.jcublas.buffer;
 
 import io.netty.buffer.ByteBuf;
-import jcuda.Pointer;
-import jcuda.Sizeof;
+import org.bytedeco.javacpp.Pointer;
 import org.nd4j.linalg.api.buffer.DataBuffer;
 import org.nd4j.linalg.util.ArrayUtil;
 
@@ -41,25 +40,24 @@ public class CudaFloatDataBuffer extends BaseCudaDataBuffer {
      *
      * @param length the length of the buffer
      */
-    public CudaFloatDataBuffer(int length) {
-        super(length, Sizeof.FLOAT);
+    public CudaFloatDataBuffer(long length) {
+        super(length, 4);
     }
 
-    public CudaFloatDataBuffer(int length, int elementSize) {
+    public CudaFloatDataBuffer(long length, int elementSize) {
         super(length, elementSize);
     }
 
-    public CudaFloatDataBuffer(int length, int elementSize, int offset) {
+    public CudaFloatDataBuffer(long length, int elementSize, long offset) {
         super(length, elementSize, offset);
     }
 
-    public CudaFloatDataBuffer(DataBuffer underlyingBuffer, int length, int offset) {
+    public CudaFloatDataBuffer(DataBuffer underlyingBuffer, long length, long offset) {
         super(underlyingBuffer, length, offset);
     }
 
     public CudaFloatDataBuffer(float[] buffer) {
-        this(buffer.length);
-        setData(buffer);
+        super(buffer);
     }
 
     public CudaFloatDataBuffer(float[] data, boolean copy) {
@@ -94,44 +92,46 @@ public class CudaFloatDataBuffer extends BaseCudaDataBuffer {
         super(data, copy, offset);
     }
 
-    public CudaFloatDataBuffer(ByteBuf buf, int length) {
+    public CudaFloatDataBuffer(ByteBuf buf, long length) {
         super(buf, length);
     }
 
-    public CudaFloatDataBuffer(ByteBuf buf, int length, int offset) {
+    public CudaFloatDataBuffer(ByteBuf buf, long length, int offset) {
         super(buf, length, offset);
     }
 
-    public CudaFloatDataBuffer(byte[] data, int length) {
+    public CudaFloatDataBuffer(byte[] data, long length) {
         super(data, length);
     }
 
-    public CudaFloatDataBuffer(ByteBuffer buffer, int length) {
+    public CudaFloatDataBuffer(ByteBuffer buffer, long length) {
         super(buffer, length);
     }
 
-    public CudaFloatDataBuffer(ByteBuffer buffer, int length, int offset) {
+    public CudaFloatDataBuffer(ByteBuffer buffer, long length, int offset) {
         super(buffer, length, offset);
     }
 
 
     @Override
-    public void assign(int[] indices, float[] data, boolean contiguous, int inc) {
+    public void assign(long[] indices, float[] data, boolean contiguous, long inc) {
         if (indices.length != data.length)
             throw new IllegalArgumentException("Indices and data length must be the same");
         if (indices.length > length())
             throw new IllegalArgumentException("More elements than space to assign. This buffer is of length " + length() + " where the indices are of length " + data.length);
 
         if (contiguous) {
-            int offset = indices[0];
+         /*   long offset = indices[0];
             Pointer p = Pointer.to(data);
             set(offset, data.length, p, inc);
+            */
+            throw new UnsupportedOperationException();
         } else
             throw new UnsupportedOperationException("Only contiguous supported");
     }
 
     @Override
-    public void assign(int[] indices, double[] data, boolean contiguous, int inc) {
+    public void assign(long[] indices, double[] data, boolean contiguous, long inc) {
 
         if (indices.length != data.length)
             throw new IllegalArgumentException("Indices and data length must be the same");
@@ -139,21 +139,23 @@ public class CudaFloatDataBuffer extends BaseCudaDataBuffer {
             throw new IllegalArgumentException("More elements than space to assign. This buffer is of length " + length() + " where the indices are of length " + data.length);
 
         if (contiguous) {
-            int offset = indices[0];
+            /*long offset = indices[0];
             Pointer p = Pointer.to(data);
             set(offset, data.length, p, inc);
+            */
+            throw new UnsupportedOperationException();
         } else
             throw new UnsupportedOperationException("Only contiguous supported");
     }
 
     @Override
-    protected DataBuffer create(int length) {
+    protected DataBuffer create(long length) {
         return new CudaFloatDataBuffer(length);
     }
 
 
     @Override
-    public double[] getDoublesAt(int offset, int inc, int length) {
+    public double[] getDoublesAt(long offset, long inc, int length) {
         return ArrayUtil.toDoubles(getFloatsAt(offset, inc, length));
     }
 
@@ -203,8 +205,8 @@ public class CudaFloatDataBuffer extends BaseCudaDataBuffer {
 
 
     @Override
-    public double getDouble(int i) {
-        return getFloat(i);
+    public double getDouble(long i) {
+        return super.getFloat(i);
     }
 
 

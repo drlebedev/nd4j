@@ -6,7 +6,7 @@ import org.nd4j.linalg.api.buffer.DataBuffer;
 import org.nd4j.linalg.api.ndarray.INDArray;
 import org.nd4j.linalg.jcublas.buffer.BaseCudaDataBuffer;
 import org.nd4j.linalg.jcublas.buffer.JCudaBuffer;
-import org.nd4j.linalg.jcublas.util.PointerUtil;
+
 
 /**
  * @author raver119@gmail.com
@@ -14,12 +14,12 @@ import org.nd4j.linalg.jcublas.util.PointerUtil;
 public class AllocationUtils {
 
     public static long getRequiredMemory(@NonNull AllocationShape shape) {
-
         return shape.getLength() * getElementSize(shape) ;
     }
 
     public static int getElementSize(@NonNull AllocationShape shape) {
-        return (shape.getDataType() == DataBuffer.Type.DOUBLE ? 8 : 4);
+        if (shape.getElementSize() > 0) return shape.getElementSize();
+            else return (shape.getDataType() == DataBuffer.Type.DOUBLE ? 8 : 4);
     }
 
     /**
@@ -34,6 +34,7 @@ public class AllocationUtils {
         shape.setOffset(array.originalOffset());
         shape.setDataType(array.data().dataType());
         shape.setLength(array.length());
+        shape.setDataType(array.data().dataType());
 
         return shape;
     }

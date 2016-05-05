@@ -9,16 +9,17 @@ public abstract class BaseBroadcastOp extends BaseOp implements BroadcastOp {
     protected int[] dimension;
 
     public BaseBroadcastOp(INDArray x, INDArray y, INDArray z, int...dimension) {
-        super(x,y,z,x.length());
+        super(x,y,z,x.lengthLong());
         this.dimension = dimension;
         for(int i = 0; i < dimension.length; i++)
             if(dimension[i] < 0)
                 dimension[i] += x.rank();
+        if(dimension.length == 1 && y.length() != x.size(dimension[0])) {
+            throw new IllegalArgumentException("Unable to broadcast y along dimension " + dimension[0] + " dimension must be same length");
+        }
     }
 
-    public BaseBroadcastOp(INDArray x, INDArray y, INDArray z, int n) {
-        this(x,y,z,new int[]{n});
-    }
+
 
     @Override
     public int broadcastLength() {

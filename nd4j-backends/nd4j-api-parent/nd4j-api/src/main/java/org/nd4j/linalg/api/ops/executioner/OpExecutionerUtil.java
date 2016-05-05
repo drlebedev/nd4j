@@ -24,8 +24,8 @@ public class OpExecutionerUtil {
         //For a single NDArray all we require is that the elements are contiguous in the buffer or every nth element
 
         //Full buffer -> implies all elements are contiguous (and match)
-        int l1 = x.length();
-        int dl1 = x.data().length();
+        long l1 = x.lengthLong();
+        long dl1 = x.data().length();
         if(l1 == dl1)
             return true;
 
@@ -44,10 +44,10 @@ public class OpExecutionerUtil {
             return false;
         //Full buffer + matching strides -> implies all elements are contiguous (and match)
         //Need strides to match, otherwise elements in buffer won't line up (i.e., c vs. f order arrays)
-        int l1 = x.length();
-        int dl1 = x.data().length();
-        int l2 = y.length();
-        int dl2 = y.data().length();
+        long l1 = x.lengthLong();
+        long dl1 = x.data().length();
+        long l2 = y.lengthLong();
+        long dl2 = y.data().length();
         int[] strides1 = x.stride();
         int[] strides2 = y.stride();
         boolean equalStrides = Arrays.equals(strides1, strides2);
@@ -72,12 +72,12 @@ public class OpExecutionerUtil {
         if(x.elementWiseStride() < 1 || y.elementWiseStride() < 1)
             return false;
         //Full buffer + matching strides -> implies all elements are contiguous (and match)
-        int l1 = x.length();
-        int dl1 = x.data().length();
-        int l2 = y.length();
-        int dl2 = y.data().length();
-        int l3 = z.length();
-        int dl3 = z.data().length();
+        long l1 = x.lengthLong();
+        long dl1 = x.data().length();
+        long l2 = y.lengthLong();
+        long dl2 = y.data().length();
+        long l3 = z.lengthLong();
+        long dl3 = z.data().length();
         int[] strides1 = x.stride();
         int[] strides2 = y.stride();
         int[] strides3 = z.stride();

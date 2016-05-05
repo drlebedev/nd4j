@@ -127,7 +127,6 @@ public class Shape {
     }
 
     private static INDArray toOffsetZeroCopyHelper(final INDArray arr, char order, boolean anyOrder) {
-
         if(arr instanceof IComplexNDArray) {
             if(arr.isRowVector()){
                 IComplexNDArray ret = Nd4j.createComplex(arr.shape(),order);
@@ -139,14 +138,14 @@ public class Shape {
             for (int i = 0; i < ret.slices(); i++)
                 ret.putSlice(i, arr.slice(i));
             return ret;
-        } else {
+        }
+        else {
             //Use CopyOp:
             char outOrder = (anyOrder ? arr.ordering() : order);
             if(outOrder == 'a')
                 outOrder = Nd4j.order();
             INDArray z = Nd4j.create(arr.shape(),outOrder);
-            CopyOp op = new CopyOp(z,arr,z);
-            Nd4j.getExecutioner().exec(op);
+            z.assign(arr);
             return z;
         }
     }
@@ -160,7 +159,7 @@ public class Shape {
      * @return the double at the specified index
      */
     public static double getDouble(INDArray arr, int... indices) {
-        int offset = getOffset(0, arr.shape(), arr.stride(), indices);
+        long offset = getOffset(arr.shapeInfo(), indices);
         return arr.data().getDouble(offset);
     }
 
@@ -280,18 +279,84 @@ public class Shape {
      * @param indices the indices to iterate over
      * @return the double at the specified index
      */
-    public static int getOffset(int baseOffset,int[] shape,int[] stride,int...indices) {
+    public static long getOffset(long baseOffset,int[] shape,int[] stride,int...indices) {
         //int ret =  mappers[shape.length].getOffset(baseOffset, shape, stride, indices);
         if(shape.length != stride.length || indices.length != shape.length)
             throw new IllegalArgumentException("Indexes, shape, and stride must be the same length");
-        int offset = baseOffset;
+        long offset = baseOffset;
         for(int i = 0; i < shape.length; i++) {
             if(indices[i] >= shape[i])
-                throw new IllegalArgumentException(String.format("Index [%d] must not be >= shape[d].",i));
+                throw new IllegalArgumentException(String.format("Index [%d] must not be >= shape[%d]=%d.",i,i,shape[i]));
             if(shape[i] != 1) {
                 offset += indices[i] * stride[i];
             }
         }
+
+        return offset;
+    }
+
+    public static long getOffset(IntBuffer shapeInformation, int... indices){
+        int rank = rank(shapeInformation);
+        if(indices.length != rank) throw new IllegalArgumentException("Indexes must be same length as array rank");
+        long offset = 0;
+        for( int i=0; i<rank; i++ ){
+            int size_dimi = size(shapeInformation,i);
+            if(indices[i] > size_dimi)
+                throw new IllegalArgumentException(String.format("Index [%d] must not be >= shape[%d]=%d.",i,i,size_dimi));
+            if(size_dimi != 1){
+                offset += indices[i] * stride(shapeInformation,i);
+            }
+        }
+        return offset;
+    }
+
+    public static long getOffset(IntBuffer shapeInformation, int row, int col){
+        int rank = rank(shapeInformation);
+        if(rank != 2) throw new IllegalArgumentException("Cannot use this getOffset method on arrays of rank != 2 (rank is: " + rank + ")");
+        long offset = 0;
+        int size_0 = size(shapeInformation,0);
+        int size_1 = size(shapeInformation,1);
+        if(row >= size_0 || col >= size_1) throw new IllegalArgumentException("Invalid indices: cannot get [" + row + "," + col + "] from a " +
+            Arrays.toString(shape(shapeInformation)) + " NDArray");
+
+        if(size_0 != 1) offset += row * stride(shapeInformation, 0);
+        if(size_1 != 1) offset += col * stride(shapeInformation, 1);
+
+        return offset;
+    }
+
+    public static long getOffset(IntBuffer shapeInformation, int dim0, int dim1, int dim2){
+        int rank = rank(shapeInformation);
+        if(rank != 3) throw new IllegalArgumentException("Cannot use this getOffset method on arrays of rank != 3 (rank is: " + rank + ")");
+        long offset = 0;
+        int size_0 = size(shapeInformation,0);
+        int size_1 = size(shapeInformation,1);
+        int size_2 = size(shapeInformation,2);
+        if(dim0 >= size_0 || dim1 >= size_1 || dim2 >= size_2) throw new IllegalArgumentException("Invalid indices: cannot get ["
+                + dim0 + "," + dim1 + "," + dim2 + "] from a " + Arrays.toString(shape(shapeInformation)) + " NDArray");
+
+        if(size_0 != 1) offset += dim0 * stride(shapeInformation, 0);
+        if(size_1 != 1) offset += dim1 * stride(shapeInformation, 1);
+        if(size_2 != 1) offset += dim2 * stride(shapeInformation, 2);
+
+        return offset;
+    }
+
+    public static long getOffset(IntBuffer shapeInformation, int dim0, int dim1, int dim2, int dim3){
+        int rank = rank(shapeInformation);
+        if(rank != 4) throw new IllegalArgumentException("Cannot use this getOffset method on arrays of rank != 4 (rank is: " + rank + ")");
+        long offset = 0;
+        int size_0 = size(shapeInformation,0);
+        int size_1 = size(shapeInformation,1);
+        int size_2 = size(shapeInformation,2);
+        int size_3 = size(shapeInformation,3);
+        if(dim0 >= size_0 || dim1 >= size_1 || dim2 >= size_2 || dim3 >= size_3) throw new IllegalArgumentException("Invalid indices: cannot get ["
+                + dim0 + "," + dim1 + "," + dim2 + "," + dim3 + "] from a " + Arrays.toString(shape(shapeInformation)) + " NDArray");
+
+        if(size_0 != 1) offset += dim0 * stride(shapeInformation, 0);
+        if(size_1 != 1) offset += dim1 * stride(shapeInformation, 1);
+        if(size_2 != 1) offset += dim2 * stride(shapeInformation, 2);
+        if(size_3 != 1) offset += dim3 * stride(shapeInformation, 3);
 
         return offset;
     }
@@ -330,6 +395,23 @@ public class Shape {
     /**
      * Returns whether the given shape is a vector
      *
+     * @param shapeInfo the shapeinfo to test
+     * @return whether the given shape is a vector
+     */
+    public static boolean isVector(DataBuffer shapeInfo) {
+        int rank = Shape.rank(shapeInfo);
+        if (rank > 2 || rank < 1)
+            return false;
+        else {
+            int len = Shape.length(shapeInfo);
+            DataBuffer shape = Shape.shapeOf(shapeInfo);
+            return shape.getInt(0) == len || shape.getInt(1) == len;
+        }
+    }
+
+    /**
+     * Returns whether the given shape is a vector
+     *
      * @param shape the shape to test
      * @return whether the given shape is a vector
      */
@@ -337,7 +419,7 @@ public class Shape {
         if (shape.length > 2 || shape.length < 1)
             return false;
         else {
-            int len = ArrayUtil.prod(shape);
+            long len = ArrayUtil.prodLong(shape);
             return shape[0] == len || shape[1] == len;
         }
     }
@@ -350,6 +432,20 @@ public class Shape {
      * @return true if the shape is a matrix false otherwise
      */
     public static boolean isMatrix(IntBuffer shapeInfo) {
+        int rank = Shape.rank(shapeInfo);
+        if (rank != 2)
+            return false;
+        return !isVector(shapeInfo);
+    }
+
+
+    /**
+     * Returns whether the passed in shape is a matrix
+     *
+     * @param shapeInfo whether the passed in shape is a matrix
+     * @return true if the shape is a matrix false otherwise
+     */
+    public static boolean isMatrix(DataBuffer shapeInfo) {
         int rank = Shape.rank(shapeInfo);
         if (rank != 2)
             return false;
@@ -440,7 +536,22 @@ public class Shape {
         return false;
     }
 
+    /**
+     * Returns true if the given shape is of length 1
+     * or provided the shape length is 2:
+     * element 0 is 1
+     * @param shapeInfo the shape info to check
+     * @return true if the above conditions hold,false otherwise
+     */
+    public static boolean isRowVectorShape(DataBuffer shapeInfo) {
+        int rank = Shape.rank(shapeInfo);
+        DataBuffer shape = Shape.shapeOf(shapeInfo);
+        return
+                (rank== 2
+                        && shape.getInt(0)== 1) ||
+                        rank == 1;
 
+    }
     /**
      * Returns true if the given shape is of length 1
      * or provided the shape length is 2:
@@ -515,6 +626,19 @@ public class Shape {
         return perm;
     }
 
+    /**
+     * If a shape array is ony 1 in length
+     * it returns a row vector
+     * @param shape the shape of the array
+     * @return the shape as is if its already >= 2 in length
+     * otherwise a row vector shape
+     */
+    public static int[] ensureAtMinRowVector(int...shape) {
+        if(shape.length >= 2)
+            return shape;
+        return new int[] {1,shape[0]};
+    }
+
 
     /**
      *
@@ -527,15 +651,15 @@ public class Shape {
         int oldnd;
         int[] olddims = ArrayUtil.copy(shape);
         int [] oldstrides = ArrayUtil.copy(stride);
-        int np, op, last_stride;
+        long np, op, last_stride;
         int oi, oj, ok, ni, nj, nk;
-        int [] newStrides = new int[stride.length];
+        long [] newStrides = new long[stride.length];
         oldnd = 0;
         //set the shape to be 1 x length
         int newShapeRank = 2;
-        int [] newShape = new int[shape.length];
+        long [] newShape = new long[shape.length];
         newShape[0] = 1;
-        newShape[1] = ArrayUtil.prod(shape);
+        newShape[1] = ArrayUtil.prodLong(shape);
 
         /*
          * Remove axes with dimension 1 from the old array. They have no effect
@@ -633,8 +757,10 @@ public class Shape {
         for (nk = ni; nk < newShapeRank; nk++) {
             newStrides[nk] = last_stride;
         }
+        if(newStrides[newShapeRank - 1] >= Integer.MAX_VALUE)
+            throw new IllegalArgumentException("Element size can not be >= Integer.MAX_VALUE");
         //returns the last element of the new stride array
-        return newStrides[newShapeRank - 1];
+        return (int)newStrides[newShapeRank - 1];
     }
 
     /**
@@ -889,8 +1015,8 @@ public class Shape {
      * @return the linear index given the shape
      * and indices
      */
-    public static int sub2Ind(int[] shape,int[] indices) {
-        int index = 0;
+    public static long sub2Ind(int[] shape,int[] indices) {
+        long index = 0;
         int shift = 1;
         for(int i = 0; i < shape.length; i++) {
             index += shift * indices[i];
@@ -907,12 +1033,14 @@ public class Shape {
      * @param numIndices the number of total indices (typically prod of shape(
      * @return the mapped indexes along each dimension
      */
-    public static int[] ind2sub(int[] shape,int index,int numIndices) {
-        int denom = numIndices;
+    public static int[] ind2sub(int[] shape,long index,long numIndices) {
+        long denom = numIndices;
         int[] ret = new int[shape.length];
         for(int i = ret.length - 1; i >= 0; i--) {
             denom /= shape[i];
-            ret[i] = index / denom;
+            if(index / denom >= Integer.MAX_VALUE)
+                throw new IllegalArgumentException("Dimension can not be >= Integer.MAX_VALUE");
+            ret[i] = (int)(index / denom);
             index %= denom;
 
         }
@@ -928,8 +1056,8 @@ public class Shape {
      * @param index the index to map
      * @return the mapped indexes along each dimension
      */
-    public static int[] ind2sub(int[] shape,int index) {
-        return ind2sub(shape, index, ArrayUtil.prod(shape));
+    public static int[] ind2sub(int[] shape,long index) {
+        return ind2sub(shape, index, ArrayUtil.prodLong(shape));
     }
 
     /**
@@ -942,8 +1070,8 @@ public class Shape {
      * @param index the index to map
      * @return the mapped indexes along each dimension
      */
-    public static int[] ind2sub(INDArray arr,int index) {
-        return ind2sub(arr.shape(), index, ArrayUtil.prod(arr.shape()));
+    public static int[] ind2sub(INDArray arr,long index) {
+        return ind2sub(arr.shape(), index, ArrayUtil.prodLong(arr.shape()));
     }
 
 
@@ -957,12 +1085,14 @@ public class Shape {
      * @param numIndices the number of total indices (typically prod of shape(
      * @return the mapped indexes along each dimension
      */
-    public static int[] ind2subC(int[] shape,int index,int numIndices) {
-        int denom = numIndices;
+    public static int[] ind2subC(int[] shape,long index,long numIndices) {
+        long denom = numIndices;
         int[] ret = new int[shape.length];
         for(int i = 0; i < shape.length; i++) {
             denom /= shape[i];
-            ret[i] = index / denom;
+            if(index / denom >= Integer.MAX_VALUE)
+                throw new IllegalArgumentException("Dimension can not be >= Integer.MAX_VALUE");
+            ret[i] = (int)(index / denom);
             index %= denom;
 
         }
@@ -981,8 +1111,8 @@ public class Shape {
      * @param index the index to map
      * @return the mapped indexes along each dimension
      */
-    public static int[] ind2subC(int[] shape,int index) {
-        return ind2subC(shape, index, ArrayUtil.prod(shape));
+    public static int[] ind2subC(int[] shape,long index) {
+        return ind2subC(shape, index, ArrayUtil.prodLong(shape));
     }
 
     /**
@@ -995,8 +1125,8 @@ public class Shape {
      * @param index the index to map
      * @return the mapped indexes along each dimension
      */
-    public static int[] ind2subC(INDArray arr,int index) {
-        return ind2subC(arr.shape(), index, ArrayUtil.prod(arr.shape()));
+    public static int[] ind2subC(INDArray arr,long index) {
+        return ind2subC(arr.shape(), index, ArrayUtil.prodLong(arr.shape()));
     }
 
     /**
@@ -1006,7 +1136,7 @@ public class Shape {
      * @param indexes the indexes along each dimension to create the offset for
      * @return the offset for the given array and indexes
      */
-    public static int offsetFor(INDArray arr,int[] indexes) {
+    public static long offsetFor(INDArray arr,int[] indexes) {
         ShapeOffsetResolution resolution = new ShapeOffsetResolution(arr);
         resolution.exec(Shape.toIndexes(indexes));
         return resolution.getOffset();
@@ -1101,6 +1231,30 @@ public class Shape {
         return ret;
     }
 
+
+    /**
+     * Gets the rank given the shape info buffer
+     * @param buffer the buffer to get the rank for
+     * @return the rank for the shape buffer
+     */
+    public static int length(DataBuffer buffer) {
+        int ret = 1;
+        DataBuffer shape = Shape.shapeOf(buffer);
+        int rank = Shape.rank(buffer);
+        for(int i = 0; i < rank; i++)
+            ret *= shape.getInt(i);
+        return ret;
+    }
+
+    /**
+     * Gets the rank given the shape info buffer
+     * @param buffer the buffer to get the rank for
+     * @return the rank for the shape buffer
+     */
+    public static int rank(DataBuffer buffer) {
+        return buffer.getInt(0);
+    }
+
     /**
      * Gets the rank given the shape info buffer
      * @param buffer the buffer to get the rank for
@@ -1109,6 +1263,25 @@ public class Shape {
     public static int rank(IntBuffer buffer) {
         IntBuffer ret =  (IntBuffer) buffer.position(0);
         return ret.get(0);
+    }
+
+    public static int size(IntBuffer buffer, int dimension){
+        int rank = rank(buffer);
+        if(dimension >= rank) throw new IllegalArgumentException("Invalid dimension " + dimension + " for rank " + rank + " array");
+        return buffer.get(1+dimension);
+    }
+
+    public static int[] shape(IntBuffer buffer ) {
+        int[] ret = new int[rank(buffer)];
+        for(int i = 0; i < ret.length; i++)
+            ret[i] = buffer.get(i);
+        return ret;
+    }
+
+    public static int stride(IntBuffer buffer, int dimension){
+        int rank = rank(buffer);
+        if(dimension >= rank) throw new IllegalArgumentException("Invalid dimension " + dimension + " for rank " + rank + " array");
+        return buffer.get(1+rank+dimension);
     }
 
     /**
@@ -1139,6 +1312,19 @@ public class Shape {
      * @param buffer the buffer to get the shape information for
      * @return
      */
+    public static DataBuffer stride(DataBuffer buffer) {
+        int rank =  rank(buffer);
+        return Nd4j.createBuffer(buffer,1 + rank,rank);
+    }
+
+
+
+    /**
+     * Get the shape from
+     * the given int buffer
+     * @param buffer the buffer to get the shape information for
+     * @return
+     */
     public static DataBuffer shapeOf(DataBuffer buffer) {
         int rank = buffer.getInt(0);
         return Nd4j.createBuffer(buffer,1,rank);
@@ -1152,6 +1338,17 @@ public class Shape {
     public static IntBuffer shapeOf(IntBuffer buffer) {
         IntBuffer ret =  (IntBuffer) buffer.position(1);
         return ret.slice();
+    }
+
+
+    /**
+     * Prints the shape
+     * for this shape information
+     * @param arr the shape information to print
+     * @return the shape information to string
+     */
+    public static String shapeToString(INDArray arr) {
+        return shapeToString(arr.shapeInfo());
     }
 
     /**
@@ -1168,7 +1365,7 @@ public class Shape {
         sb.append("Rank: " + rank + ",");
         sb.append("Offset: " + Shape.offset(buffer) + "\n");
         sb.append(" Order: " + Shape.order(buffer));
-        sb.append("shape: [");
+        sb.append(" Shape: [");
         for(int i = 0; i < rank; i++) {
             sb.append(shapeBuff.get(i));
             if(i < rank - 1)
@@ -1176,7 +1373,7 @@ public class Shape {
         }
         sb.append("], ");
 
-        sb.append("stride: [");
+        sb.append(" stride: [");
         for(int i = 0; i < rank; i++) {
             sb.append(strideBuff.get(i));
             if(i < rank - 1)
@@ -1186,6 +1383,16 @@ public class Shape {
         return sb.toString();
     }
 
+    /**
+     * Get the offset for the buffer
+     * @param buffer the shape info buffer to get the offset for
+     * @return
+     */
+    public static int offset(DataBuffer buffer) {
+        int length = shapeInfoLength(rank(buffer));
+        int ret = buffer.getInt(length - 3);
+        return ret;
+    }
 
     /**
      * Get the offset for the buffer
@@ -1239,6 +1446,17 @@ public class Shape {
      * @param buffer the buffer
      * @return
      */
+    public static char order(DataBuffer buffer) {
+        int length = Shape.shapeInfoLength(Shape.rank(buffer));
+        return (char) buffer.getInt(length - 1);
+    }
+
+
+    /**
+     * Returns the order given the shape information
+     * @param buffer the buffer
+     * @return
+     */
     public static void setOrder(IntBuffer buffer,char order) {
         int length = Shape.shapeInfoLength(Shape.rank(buffer));
         buffer.put(length - 1,(int) order);
@@ -1256,6 +1474,7 @@ public class Shape {
      */
     public static DataBuffer createShapeInformation(int[] shape,int[] stride,int offset,int elementWiseStride,char order) {
         DataBuffer ret = Nd4j.createBuffer(new int[shapeInfoLength(shape.length)]);
+        ret.setConstant(true);
         int count = 1;
         ret.put(0,shape.length);
         if(shape.length != stride.length)
@@ -1308,6 +1527,15 @@ public class Shape {
 
 
     /**
+     * To String for an int buffer
+     * @param buffer
+     * @return
+     */
+    public static String toString(DataBuffer buffer) {
+        return buffer.toString();
+    }
+
+    /**
      * Returns true if the given array
      * is meant for the whole dimension
      * @param arr the array to test
@@ -1316,7 +1544,22 @@ public class Shape {
     public static boolean wholeArrayDimension(int...arr) {
         return arr.length == 1 && arr[0] == Integer.MAX_VALUE;
     }
-
+    /**
+     *
+     * Compare the contents of a buffer and
+     * an array for equals
+     * @param arr the array
+     * @param other the buffer
+     * @return true if the content equals false otherwise
+     */
+    public static boolean contentEquals(int[] arr,DataBuffer other) {
+        for(int i = 0; i < arr.length; i++) {
+            if(other.getInt(i) != arr[i]) {
+                return false;
+            }
+        }
+        return true;
+    }
     /**
      *
      * Compare the contents of a buffer and
@@ -1338,7 +1581,7 @@ public class Shape {
     /** Are the elements in the buffer contiguous for this NDArray? */
     public static boolean isContiguousInBuffer(INDArray in) {
         int length = in.length();
-        int dLength = in.data().length();
+        long dLength = in.data().length();
         if(length == dLength)
             return true;    //full buffer, always contiguous
 

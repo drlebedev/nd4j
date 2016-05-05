@@ -34,7 +34,7 @@ public class IMax extends BaseIndexAccumulation {
     public IMax() {
     }
 
-    public IMax(INDArray x, INDArray y, int n) {
+    public IMax(INDArray x, INDArray y, long n) {
         super(x, y, n);
     }
 
@@ -53,7 +53,7 @@ public class IMax extends BaseIndexAccumulation {
 
     @Override
     public int update(float accum, int accumIdx, float x, int xIdx){
-        return (accum>=x ? accumIdx : xIdx);
+        return (accum >= x ? accumIdx : xIdx);
     }
 
     @Override

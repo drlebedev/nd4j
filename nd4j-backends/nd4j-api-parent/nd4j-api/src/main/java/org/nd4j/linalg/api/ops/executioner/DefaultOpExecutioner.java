@@ -229,13 +229,12 @@ public  class DefaultOpExecutioner implements OpExecutioner {
         if (op instanceof Accumulation || op instanceof IndexAccumulation) {
             //Overloaded exec(Accumulation,int...) and exec(IndexAccumulation,int...) should always be called instead of this
             throw new IllegalStateException("exec(Op,int...) should never be invoked for Accumulation/IndexAccumulation");
-        } else if (op instanceof TransformOp) {
-            execAndReturn((TransformOp) op,dimension);
-            return op;
         } else if (op instanceof ScalarOp) {
             //Scalar op along dimension should be same as on the entire NDArray
             doScalarOp((ScalarOp) op);
             return op;
+        }else if (op instanceof TransformOp) {
+            throw new UnsupportedOperationException("Executing transform ops along a dimension should be done via exec special");
         } else {
             throw new UnsupportedOperationException("Unknown op type");
         }
@@ -296,72 +295,10 @@ public  class DefaultOpExecutioner implements OpExecutioner {
 
     @Override
     public INDArray exec(IndexAccumulation op, int... dimension) {
-        //do op along all dimensions
-        if (dimension.length == op.x().rank())
-            dimension = new int[]{Integer.MAX_VALUE};
+        throw new UnsupportedOperationException("Operation should use exec special");
 
-
-        if (op.isPassThrough()) {
-            op.exec(dimension);
-            return op.z();
-        }
-
-
-        if (dimension[0] == Integer.MAX_VALUE) {
-            return Nd4j.scalar(execAndReturn(op).getFinalResult());
-        }
-
-        if (op.x() instanceof IComplexNDArray) {
-            int[] retShape = ArrayUtil.removeIndex(op.x().shape(), dimension);
-            //ensure vector is proper shape
-            if (retShape.length == 1) {
-                if (dimension[0] == 0)
-                    retShape = new int[]{1, retShape[0]};
-                else
-                    retShape = new int[]{retShape[0], 1};
-            } else if (retShape.length == 0) {
-                retShape = new int[]{1, 1};
-            }
-
-            IComplexNDArray ret = Nd4j.createComplex(retShape);
-            for (int i = 0; i < op.x().tensorssAlongDimension(dimension); i++) {
-                Op op2 = op.opForDimension(i, dimension);
-                int result = execAndReturn((IndexAccumulation) op2).getFinalResult();
-                ret.putScalar(i, result);
-            }
-
-            if (ret.ordering() == 'c')
-                ret.setStride(ArrayUtil.reverseCopy(ret.stride()));
-
-            return ret;
-        } else {
-            Task<INDArray> task = taskFactory.getIndexAccumulationTask(op, dimension);
-            return task.invokeBlocking();
-        }
     }
 
-    @Override
-    public INDArray execAndReturn(TransformOp op, int... dimension) {
-        if (dimension.length == op.x().rank()) {
-            dimension = new int[]{Integer.MAX_VALUE};
-        }
-
-        if(op.isPassThrough()){
-            op.exec(dimension);
-            return op.z();
-        }
-
-        Task<Void> task = taskFactory.getTransformAction(op, dimension);
-        task.invokeBlocking();
-        return op.z();
-    }
-
-    @Override
-    public INDArray execAndReturn(ScalarOp op, int... dimension) {
-        return exec(op, dimension);
-    }
-
-    @Override
     public ExecutionMode executionMode() {
         return executionMode;
     }

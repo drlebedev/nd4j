@@ -1,8 +1,8 @@
 package org.nd4j.linalg.jcublas.buffer;
 
-import org.nd4j.jita.allocator.impl.AllocationShape;
 import org.nd4j.jita.allocator.impl.AtomicAllocator;
 import org.nd4j.linalg.api.buffer.DataBuffer;
+import org.nd4j.linalg.jcublas.context.CudaContext;
 
 
 /**
@@ -19,8 +19,8 @@ public class AddressRetriever {
      * @return the device address for the given
      * data buffer
      */
-    public static long retrieveDeviceAddress(DataBuffer buffer) {
-        return allocator.getDevicePointer(buffer).getNativePointer();
+    public static long retrieveDeviceAddress(DataBuffer buffer, CudaContext context) {
+        return allocator.getPointer(buffer, context).address();
     }
 
 
@@ -30,7 +30,7 @@ public class AddressRetriever {
      * @return
      */
     public static long retrieveHostAddress(DataBuffer buffer) {
-        return  buffer.address();
+        return  allocator.getHostPointer(buffer).address();
     }
 
 }

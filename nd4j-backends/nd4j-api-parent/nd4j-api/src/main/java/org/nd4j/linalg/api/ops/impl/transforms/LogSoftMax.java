@@ -26,7 +26,8 @@ import org.nd4j.linalg.api.ops.BaseTransformOp;
 import org.nd4j.linalg.api.ops.Op;
 import org.nd4j.linalg.factory.Nd4j;
 
-/**Log(softmax(X))
+/**
+ * Log(softmax(X))
  * @author Alex Black
  */
 
@@ -38,16 +39,16 @@ public class LogSoftMax extends BaseTransformOp {
         super(x, z);
     }
 
-    public LogSoftMax(INDArray x, INDArray z, int n) {
+    public LogSoftMax(INDArray x, INDArray z, long n) {
         super(x, z, n);
     }
 
-    public LogSoftMax(INDArray x, INDArray y, INDArray z, int n) {
+    public LogSoftMax(INDArray x, INDArray y, INDArray z, long n) {
         super(x, y, z, n);
     }
 
     public LogSoftMax(INDArray x, INDArray y, INDArray z) {
-        super(x, y, z, x.length());
+        super(x, y, z, x.lengthLong());
     }
 
     public LogSoftMax(INDArray x) {
@@ -56,7 +57,7 @@ public class LogSoftMax extends BaseTransformOp {
 
     @Override
     public int opNum() {
-        throw new UnsupportedOperationException();
+       return 40;
     }
 
 
@@ -132,11 +133,14 @@ public class LogSoftMax extends BaseTransformOp {
     }
 
     @Override
-    public void init(INDArray x, INDArray y, INDArray z, int n) {
+    public void init(INDArray x, INDArray y, INDArray z, long n) {
         super.init(x, y, z, n);
-        passThrough = true;
     }
 
+    @Override
+    public boolean isExecSpecial() {
+        return true;
+    }
 
     @Override
     public void exec(int... dimensions) {

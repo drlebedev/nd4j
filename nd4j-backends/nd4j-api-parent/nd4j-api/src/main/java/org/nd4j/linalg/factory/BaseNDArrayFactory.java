@@ -250,13 +250,8 @@ public abstract class BaseNDArrayFactory implements NDArrayFactory {
         INDArray ret = Nd4j.create(1, length);
         int linearIndex = 0;
         for (INDArray d : matrices) {
-            NdIndexIterator iter = new NdIndexIterator(d.shape());
-            while(iter.hasNext()) {
-                for (int i = 0; i < d.length(); i++) {
-                    ret.putScalar(linearIndex++, d.getDouble(iter.next()));
-                }
-            }
-
+            ret.put(new INDArrayIndex[]{NDArrayIndex.interval(linearIndex,linearIndex + d.length())},d);
+            linearIndex += d.length();
         }
 
         return ret;
@@ -265,23 +260,12 @@ public abstract class BaseNDArrayFactory implements NDArrayFactory {
 
     @Override
     public INDArray toFlattened(int length, Iterator<? extends INDArray>... matrices) {
-        INDArray ret = Nd4j.create(length);
-        int linearIndex = 0;
-
-        for (Iterator<? extends INDArray> iter1 : matrices) {
-            while (iter1.hasNext()) {
-                INDArray d = iter1.next();
-                NdIndexIterator iter = new NdIndexIterator(d.shape());
-                while(iter.hasNext()) {
-                    for (int i = 0; i < d.length(); i++) {
-                        ret.putScalar(linearIndex++, d.getDouble(iter.next()));
-                    }
-                }
-            }
-
+        List<INDArray> arr = new ArrayList<>();
+        for(Iterator<? extends INDArray> arrs : matrices) {
+            while(arrs.hasNext())
+                arr.add(arrs.next());
         }
-
-        return ret;
+        return toFlattened(arr);
     }
 
     /**
@@ -321,53 +305,16 @@ public abstract class BaseNDArrayFactory implements NDArrayFactory {
         INDArray ret = Nd4j.create(1, length);
         int linearIndex = 0;
         for (INDArray d : matrices) {
-            if (!d.isVector())
-                d = Nd4j.create(d.data(), new int[]{1, d.length()}, d.offset());
-            for (int i = 0; i < d.length(); i++) {
-                ret.putScalar(linearIndex++, d.getFloat(i));
-            }
+            ret.put(new INDArrayIndex[]{NDArrayIndex.interval(linearIndex,linearIndex + d.length())},d);
+            linearIndex += d.length();
         }
 
         return ret;
     }
 
-    @Override
-    public INDArray toFlattened(char order, Collection<INDArray> matrices ){
-        int length = 0;
-        for (INDArray m : matrices)
-            length += m.length();
-        INDArray ret = Nd4j.create(new int[]{1,length},order);
-        int linearIndex = 0;
-        for(INDArray m : matrices){
-            if(m.ordering() == order && m.data().allocationMode() == DataBuffer.AllocationMode.HEAP
-                    && Shape.strideDescendingCAscendingF(m) && Shape.isContiguousInBuffer(m) ) {
-                //Can do array copy
-                int retFrom = linearIndex;
-                int mFrom = m.offset();
-                Object arr = m.data().array();
-                if(arr instanceof float[]){
-                    float[] mData = (float[])arr;
-                    float[] retData = (float[])ret.data().array();
-                    System.arraycopy(mData,mFrom,retData,retFrom,m.length());
-                } else {
-                    double[] mData = (double[])arr;
-                    double[] retData = (double[])ret.data().array();
-                    System.arraycopy(mData,mFrom,retData,retFrom,m.length());
-                }
-                linearIndex += m.length();
-            } else {
-                //Works for all cases...
-                NdIndexIterator iter = new NdIndexIterator(order, m.shape());
-                while (iter.hasNext()) {
-                    ret.putScalar(linearIndex++, m.getDouble(iter.next()));
-                }
-            }
-        }
-        return ret;
-    }
 
     @Override
-    public INDArray toFlattened(char order, INDArray... matrices ){
+    public INDArray toFlattened(char order, INDArray... matrices) {
         return toFlattened(order, Arrays.asList(matrices));
     }
 
@@ -609,7 +556,18 @@ public abstract class BaseNDArrayFactory implements NDArrayFactory {
      */
     @Override
     public INDArray rand(int rows, int columns) {
-        return randn(new int[]{rows, columns}, System.currentTimeMillis());
+        return rand(new int[]{rows, columns}, System.currentTimeMillis());
+    }
+
+    /**
+     * Create a random (uniform 0-1) NDArray with the specified shape and order
+     * @param order      Order ('c' or 'f') of the output array
+     * @param rows       Number of rows of the output array
+     * @param columns    Number of columns of the output array
+     */
+    @Override
+    public INDArray rand(char order, int rows, int columns){
+        return Nd4j.getRandom().nextDouble(order, new int[]{rows,columns});
     }
 
     /**
@@ -636,6 +594,18 @@ public abstract class BaseNDArrayFactory implements NDArrayFactory {
     @Override
     public INDArray randn(int rows, int columns) {
         return randn(new int[]{rows, columns}, System.currentTimeMillis());
+    }
+
+    /**
+     * Generate a random normal N(0,1) with the specified order and shape
+     * @param order   Order of the output array
+     * @param rows    the number of rows in the matrix
+     * @param columns the number of columns in the matrix
+     * @return
+     */
+    @Override
+    public INDArray randn(char order, int rows, int columns){
+        return Nd4j.getRandom().nextGaussian(order, new int[]{rows,columns});
     }
 
     /**
@@ -703,6 +673,17 @@ public abstract class BaseNDArrayFactory implements NDArrayFactory {
     }
 
     /**
+     * Create a random ndarray with the given shape and order
+     *
+     * @param shape the shape of the ndarray
+     * @return the random ndarray with the specified shape
+     */
+    @Override
+    public INDArray rand(char order, int[] shape) {
+        return Nd4j.getRandom().nextDouble(order,shape);
+    }
+
+    /**
      * Random normal using the given rng
      *
      * @param shape the shape of the ndarray
@@ -717,6 +698,17 @@ public abstract class BaseNDArrayFactory implements NDArrayFactory {
     /**
      * Random normal using the current time stamp
      * as the seed
+     *
+     * @param shape the shape of the ndarray
+     * @return
+     */
+    @Override
+    public INDArray randn(char order, int[] shape) {
+        return Nd4j.getRandom().nextGaussian(order, shape);
+    }
+
+    /**
+     * Random normal N(0,1) with the specified shape and
      *
      * @param shape the shape of the ndarray
      * @return
@@ -906,7 +898,7 @@ public abstract class BaseNDArrayFactory implements NDArrayFactory {
         if(shape.length == 1 && shape[0] == 0) {
             shape = new int[]{1,1};
         }
-        return createComplex(Nd4j.createBuffer(ArrayUtil.prod(shape) * 2), shape, complexStrides, offset, ordering);
+        return createComplex(Nd4j.createBuffer(ArrayUtil.prodLong(shape) * 2), shape, complexStrides, offset, ordering);
     }
 
     /**
@@ -942,7 +934,7 @@ public abstract class BaseNDArrayFactory implements NDArrayFactory {
         if(shape.length == 1 && shape[0] == 0) {
             shape = new int[]{1,1};
         }
-        return create(Nd4j.createBuffer(ArrayUtil.prod(shape)),shape,stride,offset,ordering);
+        return create(Nd4j.createBuffer(ArrayUtil.prodLong(shape)),shape,stride,offset,ordering);
     }
 
     /**
@@ -1042,6 +1034,7 @@ public abstract class BaseNDArrayFactory implements NDArrayFactory {
         int[] sortedStrides = Nd4j.getStrides(outputShape);
 
         INDArray ret = Nd4j.create(outputShape,sortedStrides);
+        allC &= (ret.ordering() == 'c');
         if(ret.isVector()) {
             int offset = 0;
             for(INDArray arr : toConcat) {
@@ -1097,8 +1090,6 @@ public abstract class BaseNDArrayFactory implements NDArrayFactory {
                     int idx = j + arrOffset;
                     retLinear.putScalar(idx,arrTensor.getDouble(j));
                 }
-
-
             }
 
             //bump the sliding window
@@ -1557,7 +1548,7 @@ public abstract class BaseNDArrayFactory implements NDArrayFactory {
         if(shape.length == 1 && shape[0] == 0) {
             shape = new int[]{1,1};
         }
-        DataBuffer buffer = Nd4j.createBuffer(ArrayUtil.prod(shape));
+        DataBuffer buffer = Nd4j.createBuffer(ArrayUtil.prodLong(shape));
         return create(buffer, shape, stride, offset);
 
     }

@@ -34,18 +34,29 @@ import java.nio.ByteBuffer;
  * @author Adam Gibson
  */
 public class CudaDataBufferFactory implements DataBufferFactory {
+    protected DataBuffer.AllocationMode allocationMode;
+
     @Override
     public void setAllocationMode(DataBuffer.AllocationMode allocationMode) {
-
+        this.allocationMode = allocationMode;
     }
 
     @Override
     public DataBuffer.AllocationMode allocationMode() {
-        return null;
+        if(allocationMode == null) {
+            String otherAlloc = System.getProperty("alloc");
+            if(otherAlloc.equals("heap"))
+                setAllocationMode(DataBuffer.AllocationMode.HEAP);
+            else if(otherAlloc.equals("direct"))
+                setAllocationMode(DataBuffer.AllocationMode.DIRECT);
+            else if(otherAlloc.equals("javacpp"))
+                setAllocationMode(DataBuffer.AllocationMode.JAVACPP);
+        }
+        return allocationMode;
     }
 
     @Override
-    public DataBuffer create(DataBuffer underlyingBuffer, int offset, int length) {
+    public DataBuffer create(DataBuffer underlyingBuffer, long offset, long length) {
         if(underlyingBuffer.dataType() == DataBuffer.Type.DOUBLE) {
            return new CudaDoubleDataBuffer(underlyingBuffer,length,offset);
         }
@@ -206,17 +217,17 @@ public class CudaDataBufferFactory implements DataBufferFactory {
     }
 
     @Override
-    public DataBuffer createDouble(int length) {
+    public DataBuffer createDouble(long length) {
         return new CudaDoubleDataBuffer(length);
     }
 
     @Override
-    public DataBuffer createFloat(int length) {
+    public DataBuffer createFloat(long length) {
         return new CudaFloatDataBuffer(length);
     }
 
     @Override
-    public DataBuffer createInt(int length) {
+    public DataBuffer createInt(long length) {
         return new CudaIntDataBuffer(length);
     }
 

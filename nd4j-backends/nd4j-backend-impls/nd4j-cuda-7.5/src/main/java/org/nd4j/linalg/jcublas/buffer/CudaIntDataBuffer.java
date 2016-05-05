@@ -20,7 +20,6 @@
 package org.nd4j.linalg.jcublas.buffer;
 
 import io.netty.buffer.ByteBuf;
-import jcuda.Sizeof;
 import org.nd4j.linalg.api.buffer.DataBuffer;
 import org.nd4j.linalg.util.ArrayUtil;
 
@@ -37,82 +36,100 @@ public class CudaIntDataBuffer extends BaseCudaDataBuffer {
      *
      * @param length the length of the buffer
      */
-    public CudaIntDataBuffer(int length) {
-        super(length, Sizeof.INT);
+    public CudaIntDataBuffer(long length) {
+        super(length, 4);
+        this.constant = true;
     }
 
-    public CudaIntDataBuffer(int length, int elementSize) {
+    public CudaIntDataBuffer(long length, int elementSize) {
         super(length, elementSize);
+        this.constant = true;
     }
 
-    public CudaIntDataBuffer(int length, int elementSize, int offset) {
+    public CudaIntDataBuffer(long length, int elementSize, int offset) {
         super(length, elementSize, offset);
+        this.constant = true;
     }
 
-    public CudaIntDataBuffer(DataBuffer underlyingBuffer, int length, int offset) {
+    public CudaIntDataBuffer(DataBuffer underlyingBuffer, long length, long offset) {
         super(underlyingBuffer, length, offset);
+        this.constant = true;
     }
 
     public CudaIntDataBuffer(int[] data) {
         this(data.length);
         setData(data);
+        this.constant = true;
     }
 
     public CudaIntDataBuffer(int[] data, boolean copy) {
         super(data, copy);
+        this.constant = true;
     }
 
     public CudaIntDataBuffer(int[] data, boolean copy, int offset) {
         super(data, copy, offset);
+        this.constant = true;
     }
 
 
     public CudaIntDataBuffer(ByteBuf buf, int length) {
         super(buf, length);
+        this.constant = true;
     }
 
     public CudaIntDataBuffer(ByteBuf buf, int length, int offset) {
         super(buf, length, offset);
+        this.constant = true;
     }
 
     public CudaIntDataBuffer(byte[] data, int length) {
         super(data, length);
+        this.constant = true;
     }
 
     public CudaIntDataBuffer(double[] data) {
         super(data);
+        this.constant = true;
     }
 
     public CudaIntDataBuffer(double[] data, boolean copy) {
         super(data, copy);
+        this.constant = true;
     }
 
     public CudaIntDataBuffer(double[] data, boolean copy, int offset) {
         super(data, copy, offset);
+        this.constant = true;
     }
 
     public CudaIntDataBuffer(float[] data) {
         super(data);
+        this.constant = true;
     }
 
     public CudaIntDataBuffer(float[] data, boolean copy) {
         super(data, copy);
+        this.constant = true;
     }
 
     public CudaIntDataBuffer(float[] data, boolean copy, int offset) {
         super(data, copy, offset);
+        this.constant = true;
     }
 
     public CudaIntDataBuffer(ByteBuffer buffer, int length) {
         super(buffer, length);
+        this.constant = true;
     }
 
     public CudaIntDataBuffer(ByteBuffer buffer, int length, int offset) {
         super(buffer, length, offset);
+        this.constant = true;
     }
 
     @Override
-    public void assign(int[] indices, float[] data, boolean contiguous, int inc) {
+    public void assign(long[] indices, float[] data, boolean contiguous, long inc) {
         if (indices.length != data.length)
             throw new IllegalArgumentException("Indices and data length must be the same");
         if (indices.length > length())
@@ -124,7 +141,7 @@ public class CudaIntDataBuffer extends BaseCudaDataBuffer {
     }
 
     @Override
-    public void assign(int[] indices, double[] data, boolean contiguous, int inc) {
+    public void assign(long[] indices, double[] data, boolean contiguous, long inc) {
         if (indices.length != data.length)
             throw new IllegalArgumentException("Indices and data length must be the same");
         if (indices.length > length())
@@ -141,7 +158,7 @@ public class CudaIntDataBuffer extends BaseCudaDataBuffer {
     }
 
     @Override
-    protected DataBuffer create(int length) {
+    protected DataBuffer create(long length) {
         return new CudaIntDataBuffer(length);
     }
 
@@ -184,7 +201,7 @@ public class CudaIntDataBuffer extends BaseCudaDataBuffer {
 
     @Override
     public int getElementSize() {
-        return Sizeof.INT;
+        return 4;
     }
 
     private void readObject(java.io.ObjectInputStream stream)

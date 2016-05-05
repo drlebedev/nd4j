@@ -106,14 +106,16 @@ public  class DoubleDataBufferTest extends BaseNd4jTest {
         file.deleteOnExit();
         SerializationUtils.saveObject(buf, file);
         DataBuffer buf2 = SerializationUtils.readObject(file);
-        assertEquals(buf, buf2);
+        //assertEquals(buf, buf2);
+        assertArrayEquals(buf.asDouble(), buf2.asDouble(), 0.001);
 
         Nd4j.alloc = DataBuffer.AllocationMode.DIRECT;
         buf = Nd4j.createBuffer(5);
         file.deleteOnExit();
         SerializationUtils.saveObject(buf, file);
         buf2 = SerializationUtils.readObject(file);
-        assertEquals(buf, buf2);
+//        assertEquals(buf, buf2);
+        assertArrayEquals(buf.asDouble(), buf2.asDouble(), 0.001);
     }
 
 
@@ -122,7 +124,7 @@ public  class DoubleDataBufferTest extends BaseNd4jTest {
         double[] d1 = new double[]{1, 2, 3, 4};
         DataBuffer d = Nd4j.createBuffer(d1);
         DataBuffer d2 = d.dup();
-        assertEquals(d, d2);
+        assertArrayEquals(d.asDouble(), d2.asDouble(), 0.0001f);
     }
 
 
@@ -148,7 +150,7 @@ public  class DoubleDataBufferTest extends BaseNd4jTest {
 
 
         double[] get2 = buffer.asDouble();
-        double[] allData = buffer.getDoublesAt(0, buffer.length());
+        double[] allData = buffer.getDoublesAt(0, (int)buffer.length());
         assertArrayEquals(get2, allData, 1e-1f);
 
 
@@ -165,7 +167,7 @@ public  class DoubleDataBufferTest extends BaseNd4jTest {
 
         double[] allButLast = new double[]{2, 3, 4, 5};
 
-        double[] allData = buffer.getDoublesAt(1, buffer.length());
+        double[] allData = buffer.getDoublesAt(1, (int)buffer.length());
         assertArrayEquals(allButLast, allData, 1e-1f);
 
     }
@@ -177,7 +179,7 @@ public  class DoubleDataBufferTest extends BaseNd4jTest {
         DataBuffer twoThree = Nd4j.createBuffer(new double[]{2,3});
         DataBuffer blank = Nd4j.createBuffer(new double[]{0, 0, 0});
         blank.assign(one,twoThree);
-        assertEquals(assertion, blank);
+        assertArrayEquals(assertion.asDouble(), blank.asDouble(), 0.0001);
     }
 
 

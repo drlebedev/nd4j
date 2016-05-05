@@ -113,7 +113,7 @@ public class TestDerivatives extends BaseNd4jTest {
 	
 	@Test
 	public void testSoftMaxDerivative(){
-		assertTrue( Nd4j.getOpFactory().createTransform("softmax", Nd4j.ones(1)).derivative() instanceof SoftMaxDerivative );
+		assertTrue( Nd4j.getOpFactory().createTransform("softmax", Nd4j.ones(1)).derivative() instanceof SoftMaxDerivative);
 		
 		Random r = new Random(12345L);
 		
@@ -134,7 +134,7 @@ public class TestDerivatives extends BaseNd4jTest {
 			}
 		}
 		
-		INDArray sm = Nd4j.getExecutioner().execAndReturn(Nd4j.getOpFactory().createTransform("softmax", z.dup()), 1);
+		INDArray sm = Nd4j.getExecutioner().execAndReturn(Nd4j.getOpFactory().createTransform("softmax", z.dup()));
 		INDArray zPrime = Nd4j.getExecutioner().execAndReturn(Nd4j.getOpFactory().createTransform("softmax", z).derivative());
 		System.out.println(Arrays.toString(sm.data().asDouble()));
 		System.out.println(Arrays.toString(zPrime.data().asDouble()));
@@ -143,6 +143,7 @@ public class TestDerivatives extends BaseNd4jTest {
 		for( int i=0; i < 20; i++) {
 			for( int j=0; j < 5; j++) {
 				double relError = Math.abs(expOut[i][j]-zPrime.getDouble(i,j)) / (Math.abs(expOut[i][j]) + Math.abs(zPrime.getDouble(i,j)));
+				System.out.println("Error: " + relError);
 				assertTrue(relError < REL_ERROR_TOLERANCE);
 			}
 		}

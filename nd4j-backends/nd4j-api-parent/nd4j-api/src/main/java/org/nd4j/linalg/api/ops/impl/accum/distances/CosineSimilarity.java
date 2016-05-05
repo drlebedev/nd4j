@@ -42,24 +42,36 @@ public class CosineSimilarity extends BaseAccumulation {
         passThrough = true;
     }
 
-    public CosineSimilarity(INDArray x, INDArray y, INDArray z, int n) {
+    public CosineSimilarity(INDArray x, INDArray y, INDArray z, long n) {
         super(x, y, z, n);
         passThrough = Nd4j.getExecutioner().executionMode() == OpExecutioner.ExecutionMode.JAVA;
+        extraArgs = new Object[2];
+        extraArgs[0] = 0.0f;
+        extraArgs[1] = 0.0f;
     }
 
-    public CosineSimilarity(INDArray x, INDArray y, int n) {
+    public CosineSimilarity(INDArray x, INDArray y, long n) {
         super(x, y, n);
         passThrough = Nd4j.getExecutioner().executionMode() == OpExecutioner.ExecutionMode.JAVA;
+        extraArgs = new Object[2];
+        extraArgs[0] = 0.0f;
+        extraArgs[1] = 0.0f;
     }
 
     public CosineSimilarity(INDArray x) {
         super(x);
         passThrough = Nd4j.getExecutioner().executionMode() == OpExecutioner.ExecutionMode.JAVA;
+        extraArgs = new Object[2];
+        extraArgs[0] = 0.0f;
+        extraArgs[1] = 0.0f;
     }
 
     public CosineSimilarity(INDArray x, INDArray y) {
         super(x, y);
         passThrough = Nd4j.getExecutioner().executionMode() == OpExecutioner.ExecutionMode.JAVA;
+        extraArgs = new Object[2];
+        extraArgs[0] = 0.0f;
+        extraArgs[1] = 0.0f;
     }
 
 
@@ -221,12 +233,12 @@ public class CosineSimilarity extends BaseAccumulation {
     }
 
     @Override
-    public double calculateFinalResult(double accum, int n){
+    public double calculateFinalResult(double accum, long n){
         throw new UnsupportedOperationException("Not supported for passthrough op");
     }
 
     @Override
-    public float calculateFinalResult(float accum, int n){
+    public float calculateFinalResult(float accum, long n){
         throw new UnsupportedOperationException("Not supported for passthrough op");
     }
 }

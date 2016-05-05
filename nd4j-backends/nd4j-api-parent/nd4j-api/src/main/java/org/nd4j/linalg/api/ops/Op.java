@@ -46,6 +46,14 @@ import java.nio.Buffer;
 public interface Op {
 
     /**
+     * Whether the executioner
+     * needs to do a special call or not
+     * @return true if the executioner needs to do a special
+     * call or not false otherwise
+     */
+    boolean isExecSpecial();
+
+    /**
      * Returns the extra args as a data buffer
      * @return
      */
@@ -99,7 +107,7 @@ public interface Op {
      *
      * @return the op
      */
-    int n();
+    long n();
 
     /**
      * Pairwise op (applicable with an individual element in y)
@@ -197,14 +205,14 @@ public interface Op {
      * @param z the resulting ndarray
      * @param n the number of elements
      */
-    void init(INDArray x, INDArray y, INDArray z, int n);
+    void init(INDArray x, INDArray y, INDArray z, long n);
 
     /**
      * Number processed
      *
      * @return the number of elements accumulated
      */
-    int numProcessed();
+    long numProcessed();
 
     /**
      * Extra arguments
@@ -254,6 +262,6 @@ public interface Op {
      * Change n
      * @param n
      */
-    void setN(int n);
+    void setN(long n);
 
 }

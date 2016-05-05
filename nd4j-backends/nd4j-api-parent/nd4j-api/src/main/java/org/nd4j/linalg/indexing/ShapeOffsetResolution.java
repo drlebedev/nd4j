@@ -23,7 +23,7 @@ public class ShapeOffsetResolution implements Serializable {
 
     private INDArray arr;
     private int[] offsets,shapes,strides;
-    private int offset = -1;
+    private long offset = -1;
 
     /**
      * Specify the array to use for resolution
@@ -64,7 +64,7 @@ public class ShapeOffsetResolution implements Serializable {
             int[] stride = new int[minDimensions];
             Arrays.fill(stride,arr.elementStride());
             int[] offsets = new int[minDimensions];
-            int offset = 0;
+            long offset = 0;
             //used for filling in elements of the actual shape stride and offsets
             int currIndex = 0;
             //used for array item access
@@ -87,6 +87,13 @@ public class ShapeOffsetResolution implements Serializable {
             if(arr.isMatrix() && indexes[0] instanceof PointIndex) {
                 shape = ArrayUtil.reverseCopy(shape);
                 stride = ArrayUtil.reverseCopy(stride);
+            }
+            else if(arr.isMatrix() && indexes[0] instanceof PointIndex && indexes[1] instanceof IntervalIndex) {
+                shape = new int[2];
+                shape[0] = 1;
+                IntervalIndex idx = (IntervalIndex) indexes[1];
+                shape[1] = idx.length();
+
             }
 
             //keep same strides
@@ -165,6 +172,10 @@ public class ShapeOffsetResolution implements Serializable {
                     shapeAxis++;
                 }
             }
+
+
+
+
             this.shapes = shape;
             this.strides = stride;
             this.offsets = offsets;
@@ -184,11 +195,21 @@ public class ShapeOffsetResolution implements Serializable {
      *
      */
     public void exec(INDArrayIndex... indexes) {
-        indexes = NDArrayIndex.resolve(arr.shapeInfo(),indexes);
+        int[] shape = arr.shape();
+
+        // Check that given point indexes are not out of bounds
+        for (int i = 0; i < indexes.length; i++) {
+            INDArrayIndex idx = indexes[i];
+            // On vectors, the first dimension can be ignored when indexing them with a single point index
+            if(idx instanceof PointIndex && (arr.isVector() && indexes.length == 1 ? idx.current() >= shape[i+1] : idx.current() >= shape[i])){
+                throw new IllegalArgumentException("INDArrayIndex["+i+"] is out of bounds (value: "+idx.current()+")");
+            }
+        }
+
+        indexes = NDArrayIndex.resolve(arr.shapeInfoDataBuffer(),indexes);
         if(tryShortCircuit(indexes)) {
             return;
         }
-        int[] shape = arr.shape();
 
 
         int numIntervals = 0;
@@ -382,7 +403,17 @@ public class ShapeOffsetResolution implements Serializable {
                 Collections.reverse(accumShape);
         }
 
-        this.shapes = Ints.toArray(accumShape);
+        if(arr.isMatrix() && indexes[0] instanceof PointIndex && indexes[1] instanceof IntervalIndex) {
+            this.shapes = new int[2];
+            shapes[0] = 1;
+            IntervalIndex idx = (IntervalIndex) indexes[1];
+            shapes[1] = idx.length();
+
+        }
+        else
+            this.shapes = Ints.toArray(accumShape);
+
+
         boolean isColumnVector = Shape.isColumnVectorShape(this.shapes);
         //finally fill in teh rest of the strides if any are left over
         while(accumStrides.size() < accumOffsets.size()) {
@@ -438,20 +469,22 @@ public class ShapeOffsetResolution implements Serializable {
                 pointOffsets.add(0);
             }
             //special case where offsets aren't caught
-            if(arr.isRowVector() && !intervalStrides.isEmpty() && pointOffsets.get(0) == 0)
+            if(arr.isRowVector() && !intervalStrides.isEmpty() && pointOffsets.get(0) == 0 && !(indexes[1] instanceof IntervalIndex))
                 this.offset = indexes[1].offset();
             else
-                this.offset = ArrayUtil.dotProduct(pointOffsets, pointStrides);
+                this.offset = ArrayUtil.dotProductLong(pointOffsets, pointStrides);
+        } else {
+            this.offset = 0;
         }
-        else if(numIntervals > 0 && arr.rank() > 2) {
+        if(numIntervals > 0 && arr.rank() > 2) {
             if(encounteredAll && arr.size(0) != 1)
-                this.offset = ArrayUtil.dotProduct(accumOffsets,accumStrides);
+                this.offset += ArrayUtil.dotProductLong(accumOffsets,accumStrides);
             else
-                this.offset = ArrayUtil.dotProduct(accumOffsets,accumStrides) / numIntervals;
+                this.offset += ArrayUtil.dotProductLong(accumOffsets,accumStrides) / numIntervals;
 
         }
         else
-            this.offset = ArrayUtil.calcOffset(accumShape, accumOffsets, accumStrides);
+            this.offset += ArrayUtil.calcOffsetLong(accumShape, accumOffsets, accumStrides);
     }
 
 
@@ -489,11 +522,11 @@ public class ShapeOffsetResolution implements Serializable {
         this.strides = strides;
     }
 
-    public int getOffset() {
+    public long getOffset() {
         return offset;
     }
 
-    public void setOffset(int offset) {
+    public void setOffset(long offset) {
         this.offset = offset;
     }
 }

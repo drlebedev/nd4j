@@ -1,28 +1,38 @@
 package org.nd4j.jita.allocator.impl;
 
-import jcuda.Pointer;
-import lombok.Data;
 import lombok.Getter;
 import lombok.NonNull;
 import lombok.Setter;
+import org.bytedeco.javacpp.Pointer;
 import org.nd4j.jita.allocator.concurrency.AtomicState;
-import org.nd4j.jita.allocator.enums.AccessState;
 import org.nd4j.jita.allocator.enums.AllocationStatus;
 import org.nd4j.jita.allocator.enums.SyncState;
+import org.nd4j.jita.allocator.garbage.GarbageReference;
+import org.nd4j.jita.allocator.pointers.PointersPair;
+import org.nd4j.jita.allocator.pointers.cuda.cudaEvent_t;
 import org.nd4j.jita.allocator.time.RateTimer;
 import org.nd4j.jita.allocator.time.TimeProvider;
 import org.nd4j.jita.allocator.time.impl.SimpleTimer;
 import org.nd4j.jita.allocator.time.providers.MillisecondsProvider;
 import org.nd4j.jita.allocator.time.providers.OperativeProvider;
+import org.nd4j.linalg.api.buffer.BaseDataBuffer;
 import org.nd4j.linalg.api.buffer.DataBuffer;
-import org.nd4j.linalg.jcublas.buffer.BaseCudaDataBuffer;
-import org.nd4j.linalg.jcublas.buffer.DevicePointerInfo;
+import org.nd4j.linalg.factory.Nd4j;
+import org.nd4j.linalg.jcublas.context.CudaContext;
+import org.nd4j.linalg.jcublas.ops.executioner.JCudaExecutioner;
+import org.nd4j.nativeblas.NativeOps;
+import org.nd4j.nativeblas.NativeOpsHolder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.lang.ref.Reference;
 import java.lang.ref.WeakReference;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
+import java.util.Queue;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
@@ -38,14 +48,13 @@ public class AllocationPoint {
     private static Logger log = LoggerFactory.getLogger(AllocationPoint.class);
 
     // thread safety is guaranteed by cudaLock
-    private volatile DevicePointerInfo pointerInfo;
+    private volatile PointersPair pointerInfo;
 
     @Getter @Setter private Long objectId;
+    @Getter @Setter private Long bucketId;
 
     // thread safety is guaranteed by allocLock
     private volatile AllocationStatus allocationStatus = AllocationStatus.UNDEFINED;
-
-    private SyncState hostMemoryState = SyncState.UNDEFINED;
 
     private transient TimeProvider timeProvider = new OperativeProvider();
     private transient TimeProvider realTimeProvider = new MillisecondsProvider();
@@ -53,15 +62,24 @@ public class AllocationPoint {
     // corresponding access times in TimeProvider quants
     private final AtomicLong accessHostRead = new AtomicLong(0);
     private final AtomicLong accessDeviceRead = new AtomicLong(0);
+
     private final AtomicLong accessHostWrite = new AtomicLong(0);
     private final AtomicLong accessDeviceWrite = new AtomicLong(0);
 
     // real time here
     private final AtomicLong deviceAccessTime = new AtomicLong(0);
 
+    protected static final NativeOps nativeOps = NativeOpsHolder.getInstance().getDeviceNativeOps();
+
+    @Getter @Setter protected volatile cudaEvent_t writeLane;
+
+    @Getter protected Queue<cudaEvent_t> readLane = new ConcurrentLinkedQueue<>();
+
+    @Getter @Setter private boolean constant;
+
     // TODO: timer should be instantiated externally
-    @Getter private final RateTimer timerShort = new SimpleTimer(10, TimeUnit.SECONDS); //new BinaryTimer(5, TimeUnit.SECONDS);
-    @Getter private final RateTimer timerLong = new SimpleTimer(60, TimeUnit.SECONDS);
+//    @Getter private final RateTimer timerShort = new SimpleTimer(10, TimeUnit.SECONDS); //new BinaryTimer(5, TimeUnit.SECONDS);
+//    @Getter private final RateTimer timerLong = new SimpleTimer(60, TimeUnit.SECONDS);
 
     /*
      device, where memory was/will be allocated.
@@ -75,25 +93,47 @@ public class AllocationPoint {
     @Getter @Setter private AllocationShape shape;
 
     private AtomicLong deviceTicks = new AtomicLong(0);
-    private AtomicLong descendantsTicks = new AtomicLong(0);
-    private AtomicLong descendantsTacks = new AtomicLong(0);
 
-    private Map<AllocationShape, NestedPoint> usedChunks = new ConcurrentHashMap<>();
+//    private Map<AllocationShape, NestedPoint> usedChunks = new ConcurrentHashMap<>();
 
-    @Getter private AtomicState accessState = new AtomicState();
+//    @Getter private AtomicState accessState = new AtomicState();
 
-    private volatile WeakReference<DataBuffer> originalDataBufferReference;
+    private volatile WeakReference<BaseDataBuffer> originalDataBufferReference;
 
-    private ReentrantReadWriteLock cudaLock = new ReentrantReadWriteLock();
-    private ReentrantReadWriteLock allocLock = new ReentrantReadWriteLock();
+    private volatile GarbageReference garbageReference;
+
+    private cudaEvent_t lastEvent;
+
+    @Getter @Setter private volatile CudaContext currentContext;
+
+    public void addReadLane(cudaEvent_t event) {
+        readLane.add(event);
+    }
+
+    public void setLastEvent(cudaEvent_t event) {
+        if (event != null) {
+            if (lastEvent != null)
+                nativeOps.destroyEvent(lastEvent.address());
+        }
+        lastEvent = event;
+    }
+
+    public cudaEvent_t getLastEvent() {
+        return lastEvent;
+    }
+
 
     /**
      * This method stores WeakReference to original BaseCudaDataBuffer
      *
      * @param buffer
      */
-    public void attachBuffer(@NonNull DataBuffer buffer) {
-        originalDataBufferReference = new WeakReference<DataBuffer>(buffer);
+    public void attachBuffer(@NonNull BaseDataBuffer buffer) {
+        originalDataBufferReference = new WeakReference<BaseDataBuffer>(buffer);
+    }
+
+    public void attachReference(GarbageReference reference) {
+        garbageReference = reference;
     }
 
     /**
@@ -114,13 +154,7 @@ public class AllocationPoint {
      * @return
      */
     public AllocationStatus getAllocationStatus() {
-        try {
-            allocLock.readLock().lock();
-
             return allocationStatus;
-        } finally {
-            allocLock.readLock().unlock();
-        }
     }
 
     /**
@@ -128,13 +162,7 @@ public class AllocationPoint {
      * @param status
      */
     public void setAllocationStatus(@NonNull AllocationStatus status) {
-        try {
-            allocLock.writeLock().lock();
-
             allocationStatus = status;
-        } finally {
-            allocLock.writeLock().unlock();
-        }
     }
 
     /**
@@ -144,20 +172,12 @@ public class AllocationPoint {
      * PLEASE NOTE: Thread safety is guaranteed by reentrant read/write lock
      * @return
      */
-    public Pointer getCudaPointer() {
-        try {
-            cudaLock.readLock().lock();
-
-            if (pointerInfo == null)
+    public Pointer getDevicePointer() {
+            if (pointerInfo == null) {
+                log.info("pointerInfo is null");
                 return null;
-
-            if (pointerInfo.getPointers() == null)
-                return null;
-
-            return pointerInfo.getPointers().getDevicePointer();
-        } finally {
-            cudaLock.readLock().unlock();
-        }
+            }
+            return pointerInfo.getDevicePointer();
     }
 
     /**
@@ -168,19 +188,10 @@ public class AllocationPoint {
      * @return
      */
     public Pointer getHostPointer() {
-        try {
-            cudaLock.readLock().lock();
-
             if (pointerInfo == null)
                 return null;
 
-            if (pointerInfo.getPointers() == null)
-                return null;
-
-            return pointerInfo.getPointers().getHostPointer();
-        } finally {
-            cudaLock.readLock().unlock();
-        }
+            return pointerInfo.getHostPointer();
     }
 
     /**
@@ -190,43 +201,23 @@ public class AllocationPoint {
      * PLEASE NOTE: Thread safety is guaranteed by reentrant read/write lock
      * @param pointerInfo CUDA pointers wrapped into DevicePointerInfo
      */
-    public void setCudaPointers(DevicePointerInfo pointerInfo) {
-        try {
-            cudaLock.writeLock().lock();
+    public void setPointers(@NonNull PointersPair pointerInfo) {
+        this.pointerInfo = pointerInfo;
+    }
 
-            this.pointerInfo = pointerInfo;
-        } finally {
-            cudaLock.writeLock().unlock();
-        }
+    public PointersPair getPointers() {
+            return this.pointerInfo;
     }
 
     public long getDeviceTicks() {
         return deviceTicks.get();
     }
 
-    public long getDescendantsTicks() {
-        return descendantsTicks.get();
-    }
-
-    public long getDescendantsTacks() {
-        return descendantsTacks.get();
-    }
-
-    public long getDescendantTicks(@NonNull AllocationShape shape) {
-        if (usedChunks.containsKey(shape)) {
-            return usedChunks.get(shape).getTicks();
-        } else {
-            // FIXME: remove this in production use
-            //throw new IllegalStateException("Descendant shape not found: " + shape);
-            return -1;
-        }
-    }
-
-    public void tickDevice() {
-        this.deviceTicks.incrementAndGet();
-        this.timerShort.triggerEvent();
-        this.timerLong.triggerEvent();
-        this.deviceAccessTime.set(realTimeProvider.getCurrentTime());
+    public void tickDeviceRead() {
+//        this.deviceTicks.incrementAndGet();
+//        this.timerShort.triggerEvent();
+//        this.timerLong.triggerEvent();
+        //this.deviceAccessTime.set(realTimeProvider.getCurrentTime());
         this.accessDeviceRead.set(timeProvider.getCurrentTime());
     }
 
@@ -236,92 +227,17 @@ public class AllocationPoint {
         this.deviceAccessTime.set(realTimeProvider.getCurrentTime());
     }
 
-    public void tickDescendant(AllocationShape shape) {
-        this.descendantsTicks.incrementAndGet();
-        this.usedChunks.get(shape).tick();
-    }
-
-    public void tackDescendant(AllocationShape shape) {
-        this.descendantsTacks.incrementAndGet();
-        this.usedChunks.get(shape).tack();
-    }
-
-    @Deprecated
-    public boolean confirmNoActiveDescendants() {
-        /*
-            This method is probably deprecated, and probably will be removed, since we have TickTackToe tracking now.
-         */
-        // TODO: point-wise lock should be assumed here
-        return descendantsTicks.get() == descendantsTacks.get();
-    }
-
-    public int getNumberOfDescendants() {
-        return usedChunks.size();
-    };
-
-    /**
-     * Adds suballocation shape to tracking list
-     *
-     * @param point
-     */
-    public void addShape(@NonNull NestedPoint point) {
-        if (!usedChunks.containsKey(point.getShape())) {
-            this.usedChunks.put(point.getShape(), point);
-        }
-    }
-
-    /**
-     * Removes suballocation shape from tracking list
-     *
-     * @param shape
-     */
-    public void dropShape(@NonNull AllocationShape shape) {
-        if (!usedChunks.containsKey(shape))
-            throw new IllegalStateException("Shape [" + shape + "] was NOT found on dropShape() call");
-
-        usedChunks.remove(shape);
-    }
-
-    /**
-     * Removes suballocation shape from tracking list
-     *
-     * @param point
-     */
-    public void dropShape(@NonNull NestedPoint point) {
-        if (!usedChunks.containsKey(point.getShape()))
-            throw new IllegalStateException("Shape [" + shape + "] was NOT found on dropShape() call");
-
-        usedChunks.remove(point.getShape());
-    }
-
-    /**
-     * Checks, if we have specific suballocation shape registered
-     * @param shape
-     * @return
-     */
-    public boolean containsShape(@NonNull AllocationShape shape) {
-        return usedChunks.containsKey(shape);
-    }
-
-    /**
-     * This method returns suballocation description for specific shape
-     *
-     * @param shape
-     * @return
-     */
-    public NestedPoint getNestedPoint(@NonNull AllocationShape shape) {
-        if (containsShape(shape))
-            return usedChunks.get(shape);
-        else  throw new IllegalStateException("Shape [" + shape + "] was NOT found on getNestedPoint() call");
-    }
-
     /**
      * Returns time, in milliseconds, when this point was accessed on host side
      *
      * @return
      */
-    public long getHostAccessTime() {
+    public long getHostReadTime() {
         return accessHostRead.get();
+    }
+
+    public long getHostWriteTime() {
+        return accessHostWrite.get();
     }
 
 
@@ -356,7 +272,8 @@ public class AllocationPoint {
      *
      */
     public void tickDeviceWrite() {
-        deviceAccessTime.set(realTimeProvider.getCurrentTime());
+//        deviceAccessTime.set(realTimeProvider.getCurrentTime());
+        tickDeviceRead();
         accessDeviceWrite.set(timeProvider.getCurrentTime());
     }
 
@@ -364,6 +281,7 @@ public class AllocationPoint {
      * This method sets time when this point was changed on host
      */
     public void tickHostWrite() {
+        tickHostRead();
         accessHostWrite.set(timeProvider.getCurrentTime());
     }
 
@@ -373,7 +291,10 @@ public class AllocationPoint {
      * @return true, if data is actual, false otherwise
      */
     public boolean isActualOnHostSide() {
-        return getHostAccessTime() >= getDeviceWriteTime();
+        //log.info("isActuialOnHostSide() -> Host side: [{}], Device side: [{}]", accessHostRead.get(), accessDeviceRead.get());
+        boolean result = accessHostWrite.get() >= accessDeviceWrite.get() || accessHostRead.get() >= accessDeviceWrite.get();
+        //log.info("isActuialOnHostSide() -> {}, shape: {}", result, shape);
+        return result;
     }
 
     /**
@@ -382,7 +303,10 @@ public class AllocationPoint {
      * @return
      */
     public boolean isActualOnDeviceSide() {
-        return accessHostWrite.get() <= getDeviceAccessTime();
+        //log.info("isActuialOnDeviceSide() -> Host side: [{}], Device side: [{}]", accessHostWrite.get(), accessDeviceWrite.get());
+        boolean result = accessDeviceWrite.get() >= accessHostWrite.get() || accessDeviceRead.get() >= accessHostWrite.get(); //accessHostWrite.get() <= getDeviceAccessTime();
+//        log.info("isActuialOnDeviceSide() -> {} ({}), Shape: {}", result, objectId, shape);
+        return result;
     }
 
     /**
@@ -391,5 +315,14 @@ public class AllocationPoint {
     public void tickDeviceToHost() {
         accessDeviceRead.set(accessHostRead.get());
         this.deviceAccessTime.set(realTimeProvider.getCurrentTime());
+    }
+
+    @Override
+    public String toString() {
+        return "AllocationPoint{" +
+                "deviceId=" + deviceId +
+                ", objectId=" + objectId +
+                ", shape=" + shape +
+                '}';
     }
 }

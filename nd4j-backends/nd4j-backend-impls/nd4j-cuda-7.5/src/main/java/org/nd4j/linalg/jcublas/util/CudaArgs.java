@@ -3,7 +3,6 @@ package org.nd4j.linalg.jcublas.util;
 
 import com.google.common.collect.ArrayListMultimap;
 import com.google.common.collect.Multimap;
-import jcuda.Pointer;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import org.nd4j.linalg.api.ndarray.INDArray;
@@ -301,7 +300,7 @@ public class CudaArgs {
                     CublasPointer pointerToFree = new CublasPointer(buffer, context);
                     kernelParameters[i] = pointerToFree.getDevicePointer();
 //                    pointersToFree.add(pointerToFree);
-//                    idMap.put(buffer, pointerToFree.getDevicePointer());
+//                    idMap.put(buffer, pointerToFree.getPointer());
 //                } else {
 //                    Pointer pointer = (Pointer) idMap.get(buffer);
 //                    kernelParameters[i] = pointer;
@@ -315,7 +314,7 @@ public class CudaArgs {
                     kernelParameters[i] = pointerToFree.getDevicePointer();
 //                    pointersToFree.add(pointerToFree);
                     arrayToPointer.put(array, pointerToFree);
-//                    idMap.put(array, pointerToFree.getDevicePointer());
+//                    idMap.put(array, pointerToFree.getPointer());
 //                } else {
 //                    Pointer pointer = (Pointer) idMap.get(array);
 //                    kernelParameters[i] = pointer;

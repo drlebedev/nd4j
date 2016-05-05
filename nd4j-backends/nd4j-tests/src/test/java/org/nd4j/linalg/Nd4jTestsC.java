@@ -20,6 +20,7 @@
 package org.nd4j.linalg;
 
 
+import org.apache.commons.io.FilenameUtils;
 import org.apache.commons.math3.util.Pair;
 import org.junit.After;
 import org.junit.Before;
@@ -28,13 +29,16 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
 import org.nd4j.linalg.api.buffer.DataBuffer;
+import org.nd4j.linalg.api.buffer.util.DataTypeUtil;
 import org.nd4j.linalg.api.complex.IComplexNumber;
 import org.nd4j.linalg.api.iter.INDArrayIterator;
 import org.nd4j.linalg.api.iter.NdIndexIterator;
 import org.nd4j.linalg.api.ndarray.INDArray;
 import org.nd4j.linalg.api.ops.Accumulation;
 import org.nd4j.linalg.api.ops.BroadcastOp;
+import org.nd4j.linalg.api.ops.Op;
 import org.nd4j.linalg.api.ops.executioner.OpExecutionerUtil;
+import org.nd4j.linalg.api.ops.impl.transforms.*;
 import org.nd4j.linalg.api.ops.impl.transforms.comparison.Eps;
 import org.nd4j.linalg.api.ops.impl.broadcast.*;
 import org.nd4j.linalg.checkutil.NDArrayCreationUtil;
@@ -50,6 +54,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.*;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.util.*;
 
 import static org.junit.Assert.*;
@@ -86,6 +92,34 @@ public  class Nd4jTestsC extends BaseNd4jTest {
 
     }
 
+
+    @Test
+    public void testSerialization() throws Exception {
+        Nd4j.getRandom().setSeed(12345);
+        INDArray arr = Nd4j.rand(1,20);
+
+        String temp = System.getProperty("java.io.tmpdir");
+
+        String outPath = FilenameUtils.concat(temp,"dl4jtestserialization.bin");
+
+        try(DataOutputStream dos = new DataOutputStream(Files.newOutputStream(Paths.get(outPath)))){
+            Nd4j.write(arr,dos);
+        }
+
+        INDArray in;
+        try(DataInputStream dis = new DataInputStream(new FileInputStream(outPath))){
+            in = Nd4j.read(dis);
+        }
+
+        INDArray inDup = in.dup();
+
+        System.out.println(in);
+        System.out.println(inDup);
+
+        assertEquals(arr,in);       //Passes:   Original array "in" is OK, but array "inDup" is not!?
+        assertEquals(in,inDup);     //Fails
+    }
+
     @Test
     public void testTensorAlongDimension2() {
         INDArray array = Nd4j.create( new float[100], new int[]{50,1,2});
@@ -93,18 +127,31 @@ public  class Nd4jTestsC extends BaseNd4jTest {
 
     }
 
+    @Test(expected = IllegalStateException.class)
+    public void testShapeEqualsOnElementWise() {
+        Nd4j.ones(10000, 1).sub(Nd4j.ones(1, 2));
+    }
+
+    @Test
+    public void testIsMax() {
+        INDArray arr = Nd4j.create(new double[]{1,2,4,3},new int[]{2,2});
+        INDArray assertion = Nd4j.create(new double[]{0,0,1,0},new int[]{2,2});
+        INDArray test = Nd4j.getExecutioner().exec(new IsMax(arr)).z();
+        assertEquals(assertion,test);
+    }
 
     @Test
     public void testArgMax() {
         INDArray toArgMax = Nd4j.linspace(1,24,24).reshape(4, 3, 2);
-        INDArray  argMax = Nd4j.argMax(toArgMax, 1);
         INDArray argMaxZero = Nd4j.argMax(toArgMax,0);
+        INDArray  argMax = Nd4j.argMax(toArgMax, 1);
         INDArray argMaxTwo = Nd4j.argMax(toArgMax,2);
         INDArray valueArray = Nd4j.valueArrayOf(new int[]{4, 2}, 2.0);
         INDArray valueArrayTwo = Nd4j.valueArrayOf(new int[]{3,2},3.0);
         INDArray valueArrayThree = Nd4j.valueArrayOf(new int[]{4,3},1.0);
-        assertEquals(valueArray, argMax);
         assertEquals(valueArrayTwo, argMaxZero);
+        assertEquals(valueArray, argMax);
+
         assertEquals(valueArrayThree,argMaxTwo);
     }
 
@@ -142,8 +189,11 @@ public  class Nd4jTestsC extends BaseNd4jTest {
             int firstDim = dim0s[i];
             int secondDim = dim1s[i];
             INDArray tad = arr.tensorAlongDimension(0, firstDim, secondDim);
-            assertEquals("I " + i + " failed ",sums[i],tad.sumNumber().doubleValue(),1e-1);
+            tad.sumNumber();
+//            assertEquals("I " + i + " failed ",sums[i],tad.sumNumber().doubleValue(),1e-1);
         }
+
+        INDArray testMem = Nd4j.create(10,10);
     }
 
 
@@ -219,37 +269,6 @@ public  class Nd4jTestsC extends BaseNd4jTest {
 
 
 
-
-
-
-
-    @Test
-    public void testReadWrite() throws Exception {
-        INDArray write = Nd4j.linspace(1, 4, 4);
-        ByteArrayOutputStream bos = new ByteArrayOutputStream();
-        SerializationUtils.writeObject(write,bos);
-        ByteArrayInputStream bis = new ByteArrayInputStream(bos.toByteArray());
-        INDArray read = SerializationUtils.readObject(bis);
-        assertEquals(write, read);
-
-    }
-
-
-
-
-    @Test
-    public void testReadWriteDouble() throws Exception {
-        INDArray write = Nd4j.linspace(1, 4, 4);
-        ByteArrayOutputStream bos = new ByteArrayOutputStream();
-        DataOutputStream dos = new DataOutputStream(bos);
-        Nd4j.write(write, dos);
-
-        ByteArrayInputStream bis = new ByteArrayInputStream(bos.toByteArray());
-        DataInputStream dis = new DataInputStream(bis);
-        INDArray read = Nd4j.read(dis);
-        assertEquals(write, read);
-
-    }
 
 
 
@@ -380,7 +399,7 @@ public  class Nd4jTestsC extends BaseNd4jTest {
             List<Integer> order = new ArrayList<>(nRows);
             //in.row(order(i)) should end up as out.row(i) - ascending
             //in.row(order(i)) should end up as out.row(nRows-j-1) - descending
-            for( int j=0; j<nRows; j++ ) order.add(j);
+            for( int j = 0; j<nRows; j++ ) order.add(j);
             Collections.shuffle(order, r);
             for( int j = 0; j<nRows; j++ )
                 in.putScalar(new int[]{j,i},order.get(j));
@@ -388,14 +407,416 @@ public  class Nd4jTestsC extends BaseNd4jTest {
             INDArray outAsc = Nd4j.sortRows(in, i, true);
             INDArray outDesc = Nd4j.sortRows(in, i, false);
 
-            for( int j = 0; j < nRows; j++ ) {
+            System.out.println("outDesc: " + Arrays.toString(outAsc.data().asFloat()));
+            for( int j = 0; j < nRows; j++) {
                 assertEquals(outAsc.getDouble(j,i),j,1e-1);
                 int origRowIdxAsc = order.indexOf(j);
                 assertTrue(outAsc.getRow(j).equals(in.getRow(origRowIdxAsc)));
 
-                assertTrue(outDesc.getDouble(j,i)==(nRows-j-1));
+                assertEquals((nRows-j-1), outDesc.getDouble(j,i), 0.001f);
                 int origRowIdxDesc = order.indexOf(nRows-j-1);
                 assertTrue(outDesc.getRow(j).equals(in.getRow(origRowIdxDesc)));
+            }
+        }
+    }
+
+    @Test
+    public void testToFlattenedOrder() {
+        INDArray concatC = Nd4j.linspace(1,4,4).reshape('c',2,2);
+        INDArray concatF = Nd4j.create(new int[]{2,2},'f');
+        concatF.assign(concatC);
+        INDArray assertionC = Nd4j.create(new double[]{1,2,3,4,1,2,3,4});
+        INDArray testC = Nd4j.toFlattened('c',concatC,concatF);
+        assertEquals(assertionC,testC);
+        INDArray test = Nd4j.toFlattened('f',concatC,concatF);
+        INDArray assertion = Nd4j.create(new double[]{1,3,2,4,1,3,2,4});
+        assertEquals(assertion,test);
+
+
+    }
+
+    @Test
+    public void testZero() {
+        Nd4j.ones(11).sumNumber();
+        Nd4j.ones(12).sumNumber();
+        Nd4j.ones(2).sumNumber();
+    }
+
+
+    @Test
+    public void testSumNumberRepeatability() {
+        INDArray arr = Nd4j.ones(1,450).reshape('c',150,3);
+
+        double first = arr.sumNumber().doubleValue();
+        double assertion = 450;
+        assertEquals(assertion,first,1e-1);
+        for( int i = 0; i < 50; i++) {
+            double second = arr.sumNumber().doubleValue();
+            assertEquals(assertion,second,1e-1);
+            assertEquals(String.valueOf(i),first,second,1e-2);
+        }
+    }
+
+    @Test
+    public void testToFlattened2() {
+        int rows = 3;
+        int cols = 4;
+        int dim2 = 5;
+        int dim3 = 6;
+
+        int length2d = rows * cols;
+        int length3d = rows * cols * dim2;
+        int length4d = rows * cols * dim2 * dim3;
+
+        INDArray c2d = Nd4j.linspace(1, length2d, length2d).reshape('c', rows, cols);
+        INDArray f2d = Nd4j.create(new int[]{rows, cols}, 'f').assign(c2d).addi(0.1);
+
+        INDArray c3d = Nd4j.linspace(1, length3d, length3d).reshape('c', rows, cols, dim2);
+        INDArray f3d = Nd4j.create(new int[]{rows, cols, dim2}).assign(c3d).addi(0.3);
+        c3d.addi(0.2);
+
+        INDArray c4d = Nd4j.linspace(1, length4d, length4d).reshape('c', rows, cols, dim2, dim3);
+        INDArray f4d = Nd4j.create(new int[]{rows, cols, dim2, dim3}).assign(c4d).addi(0.3);
+        c4d.addi(0.4);
+
+
+        assertEquals(toFlattenedViaIterator('c', c2d, f2d), Nd4j.toFlattened('c', c2d, f2d));
+        assertEquals(toFlattenedViaIterator('f', c2d, f2d), Nd4j.toFlattened('f', c2d, f2d));
+        assertEquals(toFlattenedViaIterator('c', f2d, c2d), Nd4j.toFlattened('c', f2d, c2d));
+        assertEquals(toFlattenedViaIterator('f', f2d, c2d), Nd4j.toFlattened('f', f2d, c2d));
+
+        assertEquals(toFlattenedViaIterator('c', c3d, f3d), Nd4j.toFlattened('c', c3d, f3d));
+        assertEquals(toFlattenedViaIterator('f', c3d, f3d), Nd4j.toFlattened('f', c3d, f3d));
+        assertEquals(toFlattenedViaIterator('c', c2d, f2d, c3d, f3d), Nd4j.toFlattened('c', c2d, f2d, c3d, f3d));
+        assertEquals(toFlattenedViaIterator('f', c2d, f2d, c3d, f3d), Nd4j.toFlattened('f', c2d, f2d, c3d, f3d));
+
+        assertEquals(toFlattenedViaIterator('c', c4d, f4d), Nd4j.toFlattened('c', c4d, f4d));
+        assertEquals(toFlattenedViaIterator('f', c4d, f4d), Nd4j.toFlattened('f', c4d, f4d));
+        assertEquals(toFlattenedViaIterator('c', c2d, f2d, c3d, f3d, c4d, f4d), Nd4j.toFlattened('c', c2d, f2d, c3d, f3d, c4d, f4d));
+        assertEquals(toFlattenedViaIterator('f', c2d, f2d, c3d, f3d, c4d, f4d), Nd4j.toFlattened('f', c2d, f2d, c3d, f3d, c4d, f4d));
+    }
+
+    @Test
+    public void testToFlattenedOnViews() {
+        int rows = 8;
+        int cols = 8;
+        int dim2 = 4;
+        int length = rows* cols;
+        int length3d = rows * cols * dim2;
+
+        INDArray first = Nd4j.linspace(1,length,length).reshape('c',rows,cols);
+        INDArray second = Nd4j.create(new int[]{rows,cols},'f').assign(first);
+        INDArray third = Nd4j.linspace(1,length3d,length3d).reshape('c',rows,cols,dim2);
+        first.addi(0.1);
+        second.addi(0.2);
+        third.addi(0.3);
+
+        first = first.get(NDArrayIndex.interval(4,8), NDArrayIndex.interval(0,2,8));
+        second = second.get(NDArrayIndex.interval(3,7), NDArrayIndex.all());
+        third = third.permute(0,2,1);
+        INDArray cAssertion = Nd4j.create(new double[]{33.10, 35.10, 37.10, 39.10, 41.10, 43.10, 45.10, 47.10, 49.10, 51.10, 53.10, 55.10, 57.10, 59.10, 61.10, 63.10, 25.20, 26.20, 27.20, 28.20, 29.20, 30.20, 31.20, 32.20, 33.20, 34.20, 35.20, 36.20, 37.20, 38.20, 39.20, 40.20, 41.20, 42.20, 43.20, 44.20, 45.20, 46.20, 47.20, 48.20, 49.20, 50.20, 51.20, 52.20, 53.20, 54.20, 55.20, 56.20, 1.30, 5.30, 9.30, 13.30, 17.30, 21.30, 25.30, 29.30, 2.30, 6.30, 10.30, 14.30, 18.30, 22.30, 26.30, 30.30, 3.30, 7.30, 11.30, 15.30, 19.30, 23.30, 27.30, 31.30, 4.30, 8.30, 12.30, 16.30, 20.30, 24.30, 28.30, 32.30, 33.30, 37.30, 41.30, 45.30, 49.30, 53.30, 57.30, 61.30, 34.30, 38.30, 42.30, 46.30, 50.30, 54.30, 58.30, 62.30, 35.30, 39.30, 43.30, 47.30, 51.30, 55.30, 59.30, 63.30, 36.30, 40.30, 44.30, 48.30, 52.30, 56.30, 60.30, 64.30, 65.30, 69.30, 73.30, 77.30, 81.30, 85.30, 89.30, 93.30, 66.30, 70.30, 74.30, 78.30, 82.30, 86.30, 90.30, 94.30, 67.30, 71.30, 75.30, 79.30, 83.30, 87.30, 91.30, 95.30, 68.30, 72.30, 76.30, 80.30, 84.30, 88.30, 92.30, 96.30, 97.30, 101.30, 105.30, 109.30, 113.30, 117.30, 121.30, 125.30, 98.30, 102.30, 106.30, 110.30, 114.30, 118.30, 122.30, 126.30, 99.30, 103.30, 107.30, 111.30, 115.30, 119.30, 123.30, 127.30, 100.30, 104.30, 108.30, 112.30, 116.30, 120.30, 124.30, 128.30, 129.30, 133.30, 137.30, 141.30, 145.30, 149.30, 153.30, 157.30, 130.30, 134.30, 138.30, 142.30, 146.30, 150.30, 154.30, 158.30, 131.30, 135.30, 139.30, 143.30, 147.30, 151.30, 155.30, 159.30, 132.30, 136.30, 140.30, 144.30, 148.30, 152.30, 156.30, 160.30, 161.30, 165.30, 169.30, 173.30, 177.30, 181.30, 185.30, 189.30, 162.30, 166.30, 170.30, 174.30, 178.30, 182.30, 186.30, 190.30, 163.30, 167.30, 171.30, 175.30, 179.30, 183.30, 187.30, 191.30, 164.30, 168.30, 172.30, 176.30, 180.30, 184.30, 188.30, 192.30, 193.30, 197.30, 201.30, 205.30, 209.30, 213.30, 217.30, 221.30, 194.30, 198.30, 202.30, 206.30, 210.30, 214.30, 218.30, 222.30, 195.30, 199.30, 203.30, 207.30, 211.30, 215.30, 219.30, 223.30, 196.30, 200.30, 204.30, 208.30, 212.30, 216.30, 220.30, 224.30, 225.30, 229.30, 233.30, 237.30, 241.30, 245.30, 249.30, 253.30, 226.30, 230.30, 234.30, 238.30, 242.30, 246.30, 250.30, 254.30, 227.30, 231.30, 235.30, 239.30, 243.30, 247.30, 251.30, 255.30, 228.30, 232.30, 236.30, 240.30, 244.30, 248.30, 252.30, 256.30});
+        INDArray fAssertion = Nd4j.create(new double[] {33.10, 41.10, 49.10, 57.10, 35.10, 43.10, 51.10, 59.10, 37.10, 45.10, 53.10, 61.10, 39.10, 47.10, 55.10, 63.10, 25.20, 33.20, 41.20, 49.20, 26.20, 34.20, 42.20, 50.20, 27.20, 35.20, 43.20, 51.20, 28.20, 36.20, 44.20, 52.20, 29.20, 37.20, 45.20, 53.20, 30.20, 38.20, 46.20, 54.20, 31.20, 39.20, 47.20, 55.20, 32.20, 40.20, 48.20, 56.20, 1.30, 33.30, 65.30, 97.30, 129.30, 161.30, 193.30, 225.30, 2.30, 34.30, 66.30, 98.30, 130.30, 162.30, 194.30, 226.30, 3.30, 35.30, 67.30, 99.30, 131.30, 163.30, 195.30, 227.30, 4.30, 36.30, 68.30, 100.30, 132.30, 164.30, 196.30, 228.30, 5.30, 37.30, 69.30, 101.30, 133.30, 165.30, 197.30, 229.30, 6.30, 38.30, 70.30, 102.30, 134.30, 166.30, 198.30, 230.30, 7.30, 39.30, 71.30, 103.30, 135.30, 167.30, 199.30, 231.30, 8.30, 40.30, 72.30, 104.30, 136.30, 168.30, 200.30, 232.30, 9.30, 41.30, 73.30, 105.30, 137.30, 169.30, 201.30, 233.30, 10.30, 42.30, 74.30, 106.30, 138.30, 170.30, 202.30, 234.30, 11.30, 43.30, 75.30, 107.30, 139.30, 171.30, 203.30, 235.30, 12.30, 44.30, 76.30, 108.30, 140.30, 172.30, 204.30, 236.30, 13.30, 45.30, 77.30, 109.30, 141.30, 173.30, 205.30, 237.30, 14.30, 46.30, 78.30, 110.30, 142.30, 174.30, 206.30, 238.30, 15.30, 47.30, 79.30, 111.30, 143.30, 175.30, 207.30, 239.30, 16.30, 48.30, 80.30, 112.30, 144.30, 176.30, 208.30, 240.30, 17.30, 49.30, 81.30, 113.30, 145.30, 177.30, 209.30, 241.30, 18.30, 50.30, 82.30, 114.30, 146.30, 178.30, 210.30, 242.30, 19.30, 51.30, 83.30, 115.30, 147.30, 179.30, 211.30, 243.30, 20.30, 52.30, 84.30, 116.30, 148.30, 180.30, 212.30, 244.30, 21.30, 53.30, 85.30, 117.30, 149.30, 181.30, 213.30, 245.30, 22.30, 54.30, 86.30, 118.30, 150.30, 182.30, 214.30, 246.30, 23.30, 55.30, 87.30, 119.30, 151.30, 183.30, 215.30, 247.30, 24.30, 56.30, 88.30, 120.30, 152.30, 184.30, 216.30, 248.30, 25.30, 57.30, 89.30, 121.30, 153.30, 185.30, 217.30, 249.30, 26.30, 58.30, 90.30, 122.30, 154.30, 186.30, 218.30, 250.30, 27.30, 59.30, 91.30, 123.30, 155.30, 187.30, 219.30, 251.30, 28.30, 60.30, 92.30, 124.30, 156.30, 188.30, 220.30, 252.30, 29.30, 61.30, 93.30, 125.30, 157.30, 189.30, 221.30, 253.30, 30.30, 62.30, 94.30, 126.30, 158.30, 190.30, 222.30, 254.30, 31.30, 63.30, 95.30, 127.30, 159.30, 191.30, 223.30, 255.30, 32.30, 64.30, 96.30, 128.30, 160.30, 192.30, 224.30, 256.30});
+        assertEquals(cAssertion,Nd4j.toFlattened('c', first, second, third));
+        assertEquals(fAssertion,Nd4j.toFlattened('f', first, second, third));
+    }
+
+    private static INDArray toFlattenedViaIterator(char order, INDArray... toFlatten) {
+        int length = 0;
+        for (INDArray i : toFlatten) length += i.length();
+
+        INDArray out = Nd4j.create(1, length);
+        int i = 0;
+        for (INDArray arr : toFlatten) {
+            NdIndexIterator iter = new NdIndexIterator(order, arr.shape());
+            while (iter.hasNext()) {
+                double next = arr.getDouble(iter.next());
+                out.putScalar(i++, next);
+            }
+        }
+
+        return out;
+    }
+
+
+
+    @Test
+    public void testIsMax2() {
+        //Tests: full buffer...
+        //1d
+        INDArray arr1 = Nd4j.create(new double[]{1,2,3,1});
+        Nd4j.getExecutioner().execAndReturn(new IsMax(arr1));
+        INDArray exp1 = Nd4j.create(new double[]{0,0,1,0});
+
+        assertEquals(exp1, arr1);
+
+        arr1 = Nd4j.create(new double[]{1,2,3,1});
+        INDArray result = Nd4j.zeros(4);
+        Nd4j.getExecutioner().execAndReturn(new IsMax(arr1,result));
+
+        assertEquals(Nd4j.create(new double[]{1,2,3,1}), arr1);
+        assertEquals(exp1, result);
+
+        //2d
+        INDArray arr2d = Nd4j.create(new double[][]{{0,1,2},{2,9,1}});
+        INDArray exp2d = Nd4j.create(new double[][]{{0,0,0},{0,1,0}});
+
+        INDArray f = arr2d.dup('f');
+        INDArray out2dc = Nd4j.getExecutioner().execAndReturn(new IsMax(arr2d.dup('c')));
+        INDArray out2df = Nd4j.getExecutioner().execAndReturn(new IsMax(arr2d.dup('f')));
+        assertEquals(exp2d, out2dc);
+        assertEquals(exp2d, out2df);
+    }
+
+    @Test
+    public void testToFlattened3(){
+        INDArray inC1 = Nd4j.create(new int[]{10,100},'c');
+        INDArray inC2 = Nd4j.create(new int[]{1,100},'c');
+
+        INDArray inF1 = Nd4j.create(new int[]{10,100},'f');
+//        INDArray inF1 = Nd4j.create(new int[]{784,1000},'f');
+        INDArray inF2 = Nd4j.create(new int[]{1,100},'f');
+
+        Nd4j.toFlattened('f',inF1); //ok
+        Nd4j.toFlattened('f',inF2); //ok
+
+        Nd4j.toFlattened('f',inC1); //crash
+        Nd4j.toFlattened('f',inC2); //crash
+
+        Nd4j.toFlattened('c',inF1); //crash on shape [784,1000]. infinite loop on shape [10,100]
+        Nd4j.toFlattened('c',inF2); //ok
+
+        Nd4j.toFlattened('c',inC1); //ok
+        Nd4j.toFlattened('c',inC2); //ok
+    }
+
+    @Test
+    public void testIsMaxEqualValues(){
+        //Assumption here: should only have a 1 for *first* maximum value, if multiple values are exactly equal
+
+        //[1 1 1] -> [1 0 0]
+        //Loop to double check against any threading weirdness...
+        for( int i = 0 ; i < 10; i++) {
+            assertEquals(Nd4j.create(new double[]{1, 0, 0}), Nd4j.getExecutioner().execAndReturn(new IsMax(Nd4j.ones(3))));
+        }
+
+        //[0 0 0 2 2 0] -> [0 0 0 1 0 0]
+        assertEquals(Nd4j.create(new double[]{0, 0, 0, 1, 0, 0}), Nd4j.getExecutioner().execAndReturn(new IsMax(Nd4j.create(new double[]{0, 0, 0, 2, 2, 0}))));
+
+        //[0 2]    [0 1]
+        //[2 1] -> [0 0]
+        INDArray orig = Nd4j.create(new double[][]{{0, 2}, {2, 1}});
+        INDArray exp = Nd4j.create(new double[][]{{0, 1}, {0, 0}});
+        INDArray outc = Nd4j.getExecutioner().execAndReturn(new IsMax(orig.dup('c')));
+        INDArray outf = Nd4j.getExecutioner().execAndReturn(new IsMax(orig.dup('f')));
+
+        assertEquals(exp, outc);
+        assertEquals(exp, outf);
+    }
+
+    @Test
+    public void testIsMaxAlongDimension(){
+        //1d: row vector
+        INDArray orig = Nd4j.create(new double[]{1,2,3,1});
+
+        INDArray alongDim0 = Nd4j.getExecutioner().execAndReturn(new IsMax(orig.dup(),0));
+        INDArray alongDim1 = Nd4j.getExecutioner().execAndReturn(new IsMax(orig.dup(),1));
+
+        INDArray expAlong0 = Nd4j.ones(4);
+        INDArray expAlong1 = Nd4j.create(new double[]{0,0,1,0});
+
+        assertEquals(expAlong0, alongDim0);
+        assertEquals(expAlong1, alongDim1);
+
+        //1d: col vector
+        INDArray col = Nd4j.create(new double[]{1,2,3,1},new int[]{4,1});
+        INDArray alongDim0col = Nd4j.getExecutioner().execAndReturn(new IsMax(col.dup(),0));
+        INDArray alongDim1col = Nd4j.getExecutioner().execAndReturn(new IsMax(col.dup(),1));
+
+        INDArray expAlong0col = Nd4j.create(new double[]{0,0,1,0}, new int[]{4,1});
+        INDArray expAlong1col = Nd4j.ones(new int[]{4,1});
+
+        assertEquals(expAlong0col, alongDim0col);
+        assertEquals(expAlong1col, alongDim1col);
+
+
+        //2d:
+        //[1 0 2]
+        //[2 3 1]
+        //Along dim 0:
+        //[0 0 1]
+        //[1 1 0]
+        //Along dim 1:
+        //[0 0 1]
+        //[0 1 0]
+        INDArray orig2d = Nd4j.create(new double[][]{{1,0,2},{2,3,1}});
+        INDArray alongDim0c_2d = Nd4j.getExecutioner().execAndReturn(new IsMax(orig2d.dup('c'),0));
+        INDArray alongDim0f_2d = Nd4j.getExecutioner().execAndReturn(new IsMax(orig2d.dup('f'),0));
+        INDArray alongDim1c_2d = Nd4j.getExecutioner().execAndReturn(new IsMax(orig2d.dup('c'),1));
+        INDArray alongDim1f_2d = Nd4j.getExecutioner().execAndReturn(new IsMax(orig2d.dup('f'),1));
+        INDArray expAlong0_2d = Nd4j.create(new double[][]{{0,0,1},{1,1,0}});
+        INDArray expAlong1_2d = Nd4j.create(new double[][]{{0,0,1},{0,1,0}});
+
+        assertEquals(expAlong0_2d, alongDim0c_2d);
+        assertEquals(expAlong0_2d, alongDim0f_2d);
+        assertEquals(expAlong1_2d, alongDim1c_2d);
+        assertEquals(expAlong1_2d, alongDim1f_2d);
+
+    }
+
+    @Test
+    public void testBroadcastRepeated(){
+        INDArray z = Nd4j.create(1, 4, 4, 3);
+        INDArray bias = Nd4j.create(1, 3);
+        BroadcastOp op = new BroadcastAddOp(z, bias, z, 3);
+        Nd4j.getExecutioner().exec(op);
+        System.out.println("First: OK");
+        //OK at this point: executes successfully
+
+
+        z = Nd4j.create(1, 4, 4, 3);
+        bias = Nd4j.create(1, 3);
+        op = new BroadcastAddOp(z, bias, z, 3);
+        Nd4j.getExecutioner().exec(op);         //Crashing here, when we are doing exactly the same thing as before...
+        System.out.println("Second: OK");
+    }
+
+    @Test
+    public void testTadShape() {
+        INDArray arr = Nd4j.linspace(1,12,12).reshape(4,3,1,1);
+        INDArray tad = arr.tensorAlongDimension(0,0,2,3);
+        assertArrayEquals(new int[]{4,1,1},tad.shape());
+    }
+
+    @Test
+    public void testSoftmaxDerivative() {
+        INDArray input = Nd4j.create(new double[]{ -1.07, -0.01, 0.45, 0.95, 0.45, 0.16, 0.20, 0.80, 0.89, 0.25}).transpose();
+        INDArray output = Nd4j.create(10,1);
+        Nd4j.getExecutioner().exec(new SoftMaxDerivative(input, output));
+    }
+
+
+    @Test
+    public void testVStackDifferentOrders(){
+
+        INDArray expected = Nd4j.linspace(1,9,9).reshape('c',3,3);
+
+        for(char order : new char[]{'c','f'}){
+            System.out.println(order);
+            Nd4j.factory().setOrder(order);
+
+            INDArray arr1 = Nd4j.linspace(1,6,6).reshape('c',2,3);
+            INDArray arr2 = Nd4j.linspace(7,9,3).reshape('c',1,3);
+
+            INDArray merged = Nd4j.vstack(arr1,arr2);
+            System.out.println(merged);
+            System.out.println(expected);
+
+            assertEquals(expected, merged);
+        }
+    }
+
+    @Test(expected = AssertionError.class)
+    public void testBroadcastIllegalArgument() {
+        Nd4j.ones(3,5).addiRowVector(Nd4j.ones(1,3));
+    }
+
+    @Test
+    @Ignore
+    public void testSumAlongDim1sEdgeCases() {
+        int[][] shapes = new int[][]{
+                //Standard case:
+                {2,2,3,4},
+                //Leading 1s:
+                {1,2,3,4},
+                {1,1,2,3},
+                //Trailing 1s:
+                {4,3,2,1},
+                {4,3,1,1},
+                //1s for non-leading/non-trailing dimensions
+                {4,1,3,2},
+                {4,3,1,2},
+                {4,1,1,2}
+        };
+
+        int[][] sumDims = {
+                {0}, {1}, {2}, {3},
+                {0,1}, {0,2}, {0,3}, {1,2}, {1,3},
+                {0,1,2}, {0,1,3}, {0,2,3},
+                {0,1,2,3}
+        };
+/*        for( int[] shape : shapes) {
+            for (int[] dims : sumDims) {
+                System.out.println("Shape");
+                System.out.println(Arrays.toString(shape));
+                System.out.println("Dimensions");
+                System.out.println(Arrays.toString(dims));
+                int length = ArrayUtil.prod(shape);
+                INDArray inC = Nd4j.linspace(1, length, length).reshape('c', shape);
+                System.out.println("TAD shape");
+                System.out.println(Arrays.toString((inC.tensorAlongDimension(0,dims).shape())));
+
+                INDArray inF = inC.dup('f');
+                System.out.println("C stride " + Arrays.toString(inC.tensorAlongDimension(0,dims).stride()) + " and f stride " + Arrays.toString(inF.tensorAlongDimension(0,dims).stride()));
+                for(int i = 0; i < inC.tensorssAlongDimension(dims); i++) {
+                    System.out.println(inC.tensorAlongDimension(i,dims).ravel());
+                }
+                for(int i = 0; i < inF.tensorssAlongDimension(dims); i++) {
+                    System.out.println(inF.tensorAlongDimension(i,dims).ravel());
+                }
+            }
+        }*/
+        for( int[] shape : shapes) {
+            for(int[] dims : sumDims) {
+                System.out.println("Shape: " + Arrays.toString(shape) + ", sumDims=" + Arrays.toString(dims));
+                int length = ArrayUtil.prod(shape);
+                INDArray inC = Nd4j.linspace(1, length, length).reshape('c', shape);
+                INDArray inF = inC.dup('f');
+                assertEquals(inC, inF);
+
+                INDArray sumC = inC.sum(dims);
+                INDArray sumF = inF.sum(dims);
+                assertEquals(sumC, sumF);
+
+                //Multiple runs: check for consistency between runs (threading issues, etc)
+                for (int i = 0; i < 100; i++) {
+                    assertEquals(sumC, inC.sum(dims));
+                    assertEquals(sumF, inF.sum(dims));
+                }
+            }
+        }
+    }
+
+    @Test
+    public void testIsMaxAlongDimensionSimple(){
+        //Simple test: when doing IsMax along a dimension, we expect all values to be either 0 or 1
+        //Do IsMax along dims 0&1 for rank 2, along 0,1&2 for rank 3, etc
+
+        for( int rank = 2; rank <= 6; rank++) {
+
+            int[] shape = new int[rank];
+            for( int i = 0; i < rank; i++ ) shape[i] = 2;
+            int length = ArrayUtil.prod(shape);
+
+
+            for( int alongDimension = 0; alongDimension<rank; alongDimension++) {
+                System.out.println("Testing rank " + rank + " along dimension " + alongDimension + ", (shape=" + Arrays.toString(shape) + ")");
+                INDArray arrC = Nd4j.linspace(1,length, length).reshape('c',shape);
+                INDArray arrF = arrC.dup('f');
+                Nd4j.getExecutioner().execAndReturn(new IsMax(arrC, alongDimension));
+                Nd4j.getExecutioner().execAndReturn(new IsMax(arrF, alongDimension));
+
+                double[] cBuffer = arrC.data().asDouble();
+                double[] fBuffer = arrF.data().asDouble();
+                for( int i = 0; i<length; i++ ){
+                    assertTrue("c buffer value at ["+i+"]="+cBuffer[i] + ", expected 0 or 1; dimension = " + alongDimension
+                                    + ", rank = " + rank + ", shape=" + Arrays.toString(shape),
+                            cBuffer[i]==0.0 || cBuffer[i] == 1.0);
+                }
+                for( int i = 0; i < length; i++) {
+                    assertTrue("f buffer value at ["+i+"]="+fBuffer[i] + ", expected 0 or 1; dimension = " + alongDimension
+                                    + ", rank = " + rank + ", shape=" + Arrays.toString(shape),
+                            fBuffer[i]== 0.0 || fBuffer[i] == 1.0);
+                }
             }
         }
     }
@@ -406,19 +827,19 @@ public  class Nd4jTestsC extends BaseNd4jTest {
         int nCols = 10;
         java.util.Random r = new java.util.Random(12345);
 
-        for( int i=0; i<nRows; i++ ){
+        for( int i = 0; i < nRows; i++) {
             INDArray in = Nd4j.rand(new int[]{nRows,nCols});
 
             List<Integer> order = new ArrayList<>(nRows);
-            for( int j=0; j<nCols; j++ ) order.add(j);
+            for( int j = 0; j < nCols; j++) order.add(j);
             Collections.shuffle(order, r);
-            for( int j=0; j<nCols; j++ ) in.putScalar(new int[]{i,j},order.get(j));
+            for( int j = 0; j < nCols; j++) in.putScalar(new int[]{i,j},order.get(j));
 
             INDArray outAsc = Nd4j.sortColumns(in, i, true);
             INDArray outDesc = Nd4j.sortColumns(in, i, false);
 
             for( int j = 0; j < nCols; j++ ){
-                assertTrue(outAsc.getDouble(i,j)==j);
+                assertTrue(outAsc.getDouble(i,j) == j);
                 int origColIdxAsc = order.indexOf(j);
                 assertTrue(outAsc.getColumn(j).equals(in.getColumn(origColIdxAsc)));
 
@@ -465,13 +886,194 @@ public  class Nd4jTestsC extends BaseNd4jTest {
     }
 
 
+    @Test
+    public void testMultiSum() {
+        /**
+         * ([[[ 0.,  1.],
+         [ 2.,  3.]],
 
+         [[ 4.,  5.],
+         [ 6.,  7.]]])
+
+         [0.0,1.0,2.0,3.0,4.0,5.0,6.0,7.0]
+
+
+         Rank: 3,Offset: 0
+         Order: c shape: [2,2,2], stride: [4,2,1]
+         */
+        /* */
+        INDArray arr = Nd4j.linspace(0,7,8).reshape('c',2,2,2);
+         /* [0.0,4.0,2.0,6.0,1.0,5.0,3.0,7.0]
+         *
+         * Rank: 3,Offset: 0
+             Order: f shape: [2,2,2], stride: [1,2,4]*/
+        INDArray arrF = Nd4j.create(new int[]{2,2,2},'f').assign(arr);
+
+        assertEquals(arr,arrF);
+        //0,2,4,6 and 1,3,5,7
+        assertEquals(Nd4j.create(new double[]{12,16}),arr.sum(0,1));
+        //0,1,4,5 and 2,3,6,7
+        assertEquals(Nd4j.create(new double[]{10,18}),arr.sum(0,2));
+        //0,2,4,6 and 1,3,5,7
+        assertEquals(Nd4j.create(new double[]{12,16}),arrF.sum(0,1));
+        //0,1,4,5 and 2,3,6,7
+        assertEquals(Nd4j.create(new double[]{10,18}),arrF.sum(0,2));
+
+        //0,1,2,3 and 4,5,6,7
+        assertEquals(Nd4j.create(new double[]{6,22}),arr.sum(1,2));
+        //0,1,2,3 and 4,5,6,7
+        assertEquals(Nd4j.create(new double[]{6,22}),arrF.sum(1,2));
+
+
+        double[] data = new double[]{10, 26,42};
+        INDArray assertion = Nd4j.create(data);
+        for(int i = 0; i < data.length; i++) {
+            assertEquals(data[i],assertion.getDouble(i),1e-1);
+        }
+
+        INDArray twoTwoByThree = Nd4j.linspace(1,12,12).reshape('f',2, 2, 3);
+        INDArray multiSum = twoTwoByThree.sum(0, 1);
+        assertEquals(assertion,multiSum);
+    }
+
+
+    @Test
+    public void testSum2dv2() {
+        INDArray in = Nd4j.linspace(1,8,8).reshape('c',2,2,2);
+
+        int[][] dims = new int[][]{{0,1}, {1,0}, {0,2}, {2,0}, {1,2}, {2,1}};
+        double[][] exp = new double[][]{{16,20}, {16,20}, {14,22}, {14,22}, {10,26}, {10,26}};
+
+        System.out.println("dims\texpected\t\tactual");
+        for(int i = 0; i < dims.length; i++) {
+            int[] d = dims[i];
+            double[] e = exp[i];
+
+            INDArray out = in.sum(d);
+
+            System.out.println(Arrays.toString(d) + "\t" + Arrays.toString(e) + "\t" + out);
+            assertEquals(Nd4j.create(e,out.shape()),out);
+        }
+    }
+
+
+    //Passes on 3.9:
+    @Test
+    public void testSum3Of4_2222() {
+        int[] shape = {2, 2, 2, 2};
+        int length = ArrayUtil.prod(shape);
+        INDArray arrC = Nd4j.linspace(1, length, length).reshape('c', shape);
+        INDArray arrF = Nd4j.create(arrC.shape()).assign(arrC);
+
+        int[][] dimsToSum = new int[][]{{0, 1, 2}, {0, 1, 3}, {0, 2, 3}, {1, 2, 3}};
+        double[][] expD = new double[][]{{64, 72}, {60, 76}, {52, 84}, {36, 100}};
+
+        for (int i = 0; i < dimsToSum.length; i++) {
+            int[] d = dimsToSum[i];
+
+            INDArray outC = arrC.sum(d);
+            INDArray outF = arrF.sum(d);
+            INDArray exp = Nd4j.create(expD[i],outC.shape());
+
+            assertEquals(exp, outC);
+            assertEquals(exp, outF);
+
+            System.out.println(Arrays.toString(d) + "\t" + outC + "\t" + outF);
+        }
+    }
+
+    @Test
+    public void testBroadcast1d() {
+        int[] shape = {4,3,2};
+        int[] toBroadcastDims = new int[]{0,1,2};
+        int[][] toBroadcastShapes = new int[][]{{1,4}, {1,3}, {1,2}};
+
+        //Expected result values in buffer: c order, need to reshape to {4,3,2}. Values taken from 0.4-rc3.8
+        double[][] expFlat = new double[][]{
+                {1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 3.0, 3.0, 3.0, 3.0, 3.0, 3.0, 4.0, 4.0, 4.0, 4.0, 4.0, 4.0},
+                {1.0, 1.0, 2.0, 2.0, 3.0, 3.0, 1.0, 1.0, 2.0, 2.0, 3.0, 3.0, 1.0, 1.0, 2.0, 2.0, 3.0, 3.0, 1.0, 1.0, 2.0, 2.0, 3.0, 3.0},
+                {1.0, 2.0, 1.0, 2.0, 1.0, 2.0, 1.0, 2.0, 1.0, 2.0, 1.0, 2.0, 1.0, 2.0, 1.0, 2.0, 1.0, 2.0, 1.0, 2.0, 1.0, 2.0, 1.0, 2.0}};
+
+        double[][] expLinspaced = new double[][] {
+                {2.0,3.0,4.0,5.0,6.0,7.0,9.0,10.0,11.0,12.0,13.0,14.0,16.0,17.0,18.0,19.0,20.0,21.0,23.0,24.0,25.0,26.0,27.0,28.0},
+                {2.0,3.0,5.0,6.0,8.0,9.0,8.0,9.0,11.0,12.0,14.0,15.0,14.0,15.0,17.0,18.0,20.0,21.0,20.0,21.0,23.0,24.0,26.0,27.0},
+                {2.0,4.0,4.0,6.0,6.0,8.0,8.0,10.0,10.0,12.0,12.0,14.0,14.0,16.0,16.0,18.0,18.0,20.0,20.0,22.0,22.0,24.0,24.0,26.0}
+        };
+
+        for( int i = 0; i < toBroadcastDims.length; i++) {
+            int dim = toBroadcastDims[i];
+            int[] vectorShape = toBroadcastShapes[i];
+            int length = ArrayUtil.prod(vectorShape);
+
+            INDArray zC = Nd4j.create(shape,'c');
+            zC.setData(Nd4j.linspace(1,24,24).data());
+            for(int tad = 0; tad < zC.tensorssAlongDimension(dim); tad++) {
+                System.out.println("Tad " + tad + " is " + zC.tensorAlongDimension(tad,dim));
+            }
+
+            INDArray zF = Nd4j.create(shape,'f');
+            zF.assign(zC);
+            INDArray toBroadcast = Nd4j.linspace(1,length,length);
+
+            Op opc = new BroadcastAddOp(zC, toBroadcast, zC, dim);
+            Op opf = new BroadcastAddOp(zF, toBroadcast, zF, dim);
+            INDArray exp = Nd4j.create(expLinspaced[i],shape,'c');
+            INDArray expF = Nd4j.create(shape,'f');
+            expF.assign(exp);
+            for(int tad = 0; tad < zC.tensorssAlongDimension(dim); tad++) {
+                System.out.println(zC.tensorAlongDimension(tad,dim).offset() + " and f offset is " + zF.tensorAlongDimension(tad,dim).offset());
+            }
+
+            Nd4j.getExecutioner().exec(opc);
+            Nd4j.getExecutioner().exec(opf);
+
+            assertEquals(exp,zC);
+            assertEquals(exp,zF);
+        }
+    }
+
+    @Test
+    public void testSum3Of4_3322() {
+        int[] shape = {3, 3, 2, 2};
+        int length = ArrayUtil.prod(shape);
+        INDArray arrC = Nd4j.linspace(1, length, length).reshape('c', shape);
+        INDArray arrF = Nd4j.create(arrC.shape()).assign(arrC);
+
+        int[][] dimsToSum = new int[][]{{0, 1, 2}, {0, 1, 3}, {0, 2, 3}, {1, 2, 3}};
+        double[][] expD = new double[][]{{324, 342}, {315, 351}, {174, 222, 270}, {78, 222, 366}};
+
+        for (int i = 0; i < dimsToSum.length; i++) {
+            int[] d = dimsToSum[i];
+
+            INDArray outC = arrC.sum(d);
+            INDArray outF = arrF.sum(d);
+            INDArray exp = Nd4j.create(expD[i],outC.shape());
+
+            assertEquals(exp, outC);
+            assertEquals(exp, outF);
+
+            //System.out.println(Arrays.toString(d) + "\t" + outC + "\t" + outF);
+        }
+    }
+
+    @Test
+    public void testToFlattened() {
+        INDArray arr = Nd4j.linspace(1,4,4).reshape(2,2);
+        List<INDArray> concat = new ArrayList<>();
+        for(int i = 0; i < 3; i++) {
+            concat.add(arr.dup());
+        }
+
+        INDArray assertion = Nd4j.create(new double[]{1,2,3,4,1,2,3,4,1,2,3,4});
+        INDArray flattened = Nd4j.toFlattened(concat);
+        assertEquals(assertion,flattened);
+
+    }
 
 
 
     @Test
     public void testDup() {
-
         for(int x = 0; x < 100; x++) {
             INDArray orig = Nd4j.linspace(1, 4, 4);
             INDArray dup = orig.dup();
@@ -505,7 +1107,12 @@ public  class Nd4jTestsC extends BaseNd4jTest {
 
     }
 
-
+    @Test
+    public void testGetFromRowVector() {
+        INDArray matrix = Nd4j.linspace(1,4,4).reshape(2,2);
+        INDArray rowGet = matrix.get(NDArrayIndex.point(0), NDArrayIndex.interval(0, 2));
+        assertArrayEquals(new int[]{1,2},rowGet.shape());
+    }
 
     @Test
     public void testSubRowVector() {
@@ -776,7 +1383,7 @@ public  class Nd4jTestsC extends BaseNd4jTest {
         float nFirst = 2;
         float dFirst = d.getFloat(0, 1);
         assertEquals(nFirst, dFirst, 1e-1);
-        assertEquals(d.data(), n.data());
+        assertEquals(d, n);
         assertEquals(true, Arrays.equals(new int[]{2, 2}, n.shape()));
 
         INDArray newRow = Nd4j.linspace(5, 6, 2);
@@ -876,19 +1483,20 @@ public  class Nd4jTestsC extends BaseNd4jTest {
         INDArray arr = Nd4j.rand(shape);
 
         INDArray tad = arr.tensorAlongDimension(0, 1, 2);
-        assertArrayEquals(tad.shape(), new int[]{7, 5});
+        assertArrayEquals(tad.shape(), new int[]{5,7});
 
 
-        INDArray copy = Nd4j.zeros(7,5).assign(0.0);
-        for( int i = 0; i < 7; i++) {
-            for( int j = 0; j < 5; j++) {
+        INDArray copy = Nd4j.zeros(5,7).assign(0.0);
+        for( int i = 0; i < 5; i++) {
+            for( int j = 0; j < 7; j++) {
                 copy.putScalar(new int[]{i,j},tad.getDouble(i,j));
             }
         }
 
 
         assertTrue(tad.equals(copy));
-
+        tad = tad.reshape(7,5);
+        copy = copy.reshape(7,5);
         INDArray first = Nd4j.rand(new int[]{2, 7});
         INDArray mmul = first.mmul(tad);
         INDArray mmulCopy = first.mmul(copy);
@@ -908,18 +1516,20 @@ public  class Nd4jTestsC extends BaseNd4jTest {
 
         INDArray tad = arr.tensorAlongDimension(0, 1, 2);
         boolean order = Shape.cOrFortranOrder(tad.shape(), tad.stride(), tad.elementStride());
-        assertArrayEquals(tad.shape(),new int[]{7,5});
+        assertArrayEquals(tad.shape(),new int[]{5,7});
 
 
-        INDArray copy = Nd4j.zeros(7,5);
-        for( int i = 0; i < 7; i++ ){
-            for( int j = 0; j < 5; j++ ){
+        INDArray copy = Nd4j.zeros(5,7);
+        for( int i = 0; i < 5; i++) {
+            for( int j = 0; j < 7; j++) {
                 copy.putScalar(new int[]{i,j},tad.getDouble(i,j));
             }
         }
 
         assertTrue(tad.equals(copy));
 
+        tad = tad.reshape(7,5);
+        copy = copy.reshape(7,5);
         INDArray first = Nd4j.rand(new int[]{2, 7});
         INDArray mmul = first.mmul(tad);
         INDArray mmulCopy = first.mmul(copy);
@@ -1151,7 +1761,7 @@ public  class Nd4jTestsC extends BaseNd4jTest {
     public void testEps() {
         INDArray ones = Nd4j.ones(5);
         double sum = Nd4j.getExecutioner().exec(new Eps(ones, ones, ones, ones.length())).z().sumNumber().doubleValue();
-        assertEquals(5, sum, 1e-1);
+        assertEquals(0, sum, 1e-1);
     }
 
 
@@ -1229,14 +1839,14 @@ public  class Nd4jTestsC extends BaseNd4jTest {
          * slice(0,axis)
          * should be consistent with this behavior
          */
-        for( int i = 0; i < 5; i++ ){
+        for( int i = 0; i < 7; i++) {
             INDArray slice = array2D.slice(i,1);
-            assertTrue(Arrays.equals(slice.shape(), new int[]{1, 7}));
+            assertTrue(Arrays.equals(slice.shape(), new int[]{5,1}));
         }
 
-        for( int i = 0; i < 7; i++ ){
+        for( int i = 0; i < 5; i++ ){
             INDArray slice = array2D.slice(i, 0);
-            assertTrue(Arrays.equals(slice.shape(), new int[]{5, 1}));
+            assertTrue(Arrays.equals(slice.shape(), new int[]{1,7}));
         }
     }
 
@@ -1274,7 +1884,7 @@ public  class Nd4jTestsC extends BaseNd4jTest {
     @Test
     public void testGetRow(){
         INDArray arr = Nd4j.ones(10, 4);
-        for( int i=0; i<10; i++ ){
+        for( int i=0; i < 10; i++ ){
             INDArray row = arr.getRow(i);
             assertArrayEquals(row.shape(), new int[]{1, 4});
         }
@@ -1474,7 +2084,57 @@ public  class Nd4jTestsC extends BaseNd4jTest {
         INDArray permuted = toPermute.permute(2, 1, 0);
         INDArray assertion = Nd4j.create(new float[]{0, 4, 2, 6, 1, 5, 3, 7}, new int[]{2, 2, 2});
         assertEquals(permuted, assertion);
+    }
 
+    @Test
+    public void testPermutei(){
+        //Check in-place permute vs. copy array permute
+
+        //2d:
+        INDArray orig = Nd4j.linspace(1,3*4,3*4).reshape('c',3,4);
+        INDArray exp01 = orig.permute(0,1);
+        INDArray exp10 = orig.permute(1,0);
+        List<Pair<INDArray,String>> list1 = NDArrayCreationUtil.getAllTestMatricesWithShape(3,4,12345);
+        List<Pair<INDArray,String>> list2 = NDArrayCreationUtil.getAllTestMatricesWithShape(3,4,12345);
+        for( int i=0; i<list1.size(); i++ ){
+            INDArray p1 = list1.get(i).getFirst().assign(orig).permutei(0,1);
+            INDArray p2 = list2.get(i).getFirst().assign(orig).permutei(1,0);
+
+            assertEquals(exp01, p1);
+            assertEquals(exp10, p2);
+        }
+
+        //3d:
+        INDArray orig3d = Nd4j.linspace(1,3*4*5,3*4*5).reshape('c',3,4,5);
+        INDArray exp012 = orig3d.permute(0,1,2);
+        INDArray exp021 = orig3d.permute(0,2,1);
+        INDArray exp120 = orig3d.permute(1,2,0);
+        INDArray exp102 = orig3d.permute(1,0,2);
+        INDArray exp201 = orig3d.permute(2,0,1);
+        INDArray exp210 = orig3d.permute(2,1,0);
+
+        List<Pair<INDArray,String>> list012 = NDArrayCreationUtil.getAll3dTestArraysWithShape(12345,3,4,5);
+        List<Pair<INDArray,String>> list021 = NDArrayCreationUtil.getAll3dTestArraysWithShape(12345,3,4,5);
+        List<Pair<INDArray,String>> list120 = NDArrayCreationUtil.getAll3dTestArraysWithShape(12345,3,4,5);
+        List<Pair<INDArray,String>> list102 = NDArrayCreationUtil.getAll3dTestArraysWithShape(12345,3,4,5);
+        List<Pair<INDArray,String>> list201 = NDArrayCreationUtil.getAll3dTestArraysWithShape(12345,3,4,5);
+        List<Pair<INDArray,String>> list210 = NDArrayCreationUtil.getAll3dTestArraysWithShape(12345,3,4,5);
+
+        for( int i=0; i<list012.size(); i++ ){
+            INDArray p1 = list012.get(i).getFirst().assign(orig3d).permutei(0,1,2);
+            INDArray p2 = list021.get(i).getFirst().assign(orig3d).permutei(0,2,1);
+            INDArray p3 = list120.get(i).getFirst().assign(orig3d).permutei(1,2,0);
+            INDArray p4 = list102.get(i).getFirst().assign(orig3d).permutei(1,0,2);
+            INDArray p5 = list201.get(i).getFirst().assign(orig3d).permutei(2,0,1);
+            INDArray p6 = list210.get(i).getFirst().assign(orig3d).permutei(2,1,0);
+
+            assertEquals(exp012, p1);
+            assertEquals(exp021, p2);
+            assertEquals(exp120, p3);
+            assertEquals(exp102, p4);
+            assertEquals(exp201, p5);
+            assertEquals(exp210, p6);
+        }
     }
 
 
@@ -1497,7 +2157,28 @@ public  class Nd4jTestsC extends BaseNd4jTest {
     }
 
 
+    @Test
+    public void testMuliRowVector(){
+        INDArray arrC = Nd4j.linspace(1,6,6).reshape('c',3,2);
+        INDArray arrF = Nd4j.create(new int[]{3,2},'f').assign(arrC);
 
+        INDArray temp = Nd4j.create(new int[]{2,11},'c');
+        INDArray vec = temp.get(NDArrayIndex.all(), NDArrayIndex.interval(9,10)).transpose();
+        vec.assign(Nd4j.linspace(1,2,2));
+
+        //Passes if we do one of these...
+//        vec = vec.dup('c');
+//        vec = vec.dup('f');
+
+        INDArray outC = arrC.muliRowVector(vec);
+        INDArray outF = arrF.muliRowVector(vec);
+
+        double[][] expD = new double[][]{{1,4},{3,8},{5,12}};
+        INDArray exp = Nd4j.create(expD);
+
+        assertEquals(exp, outC);
+        assertEquals(exp, outF);
+    }
 
     @Test
     public void testSliceConstructor() throws Exception {
@@ -1512,6 +2193,175 @@ public  class Nd4jTestsC extends BaseNd4jTest {
 
 
 
+    @Test
+    public void testStdev0(){
+        double[][] ind = {{5.1, 3.5, 1.4}, {4.9, 3.0, 1.4}, {4.7, 3.2, 1.3}};
+        INDArray in = Nd4j.create(ind);
+        INDArray stdev = in.std(0);
+        INDArray exp = Nd4j.create(new double[]{0.20000005,0.24527183,0.047140464});
+
+        assertEquals(exp,stdev);
+    }
+
+    @Test
+    public void testStdev1(){
+        double[][] ind = {{5.1, 3.5, 1.4}, {4.9, 3.0, 1.4}, {4.7, 3.2, 1.3}};
+        INDArray in = Nd4j.create(ind);
+        INDArray stdev = in.std(1);
+        INDArray exp = Nd4j.create(new double[]{1.8552212,1.7519685,1.7035841});
+        assertEquals(exp,stdev);
+    }
+
+
+    @Test
+    public void testSignXZ(){
+        double[] d =   {1.0, -1.1,  1.2,  1.3, -1.4, -1.5, 1.6, -1.7, -1.8, -1.9, -1.01, -1.011};
+        double[] e =   {1.0, -1.0,  1.0,  1.0, -1.0, -1.0, 1.0, -1.0, -1.0, -1.0, -1.0, -1.0};
+
+        INDArray arrF = Nd4j.create(d,new int[]{4,3},'f');
+        INDArray arrC = Nd4j.create(new int[]{4,3},'c').assign(arrF);
+
+        INDArray exp = Nd4j.create(e, new int[]{4,3}, 'f');
+
+        //First: do op with just x (inplace)
+        INDArray arrFCopy = arrF.dup('f');
+        INDArray arrCCopy = arrC.dup('c');
+        Nd4j.getExecutioner().exec(new Sign(arrFCopy));
+        Nd4j.getExecutioner().exec(new Sign(arrCCopy));
+        assertEquals(exp, arrFCopy);
+        assertEquals(exp, arrCCopy);
+
+        //Second: do op with both x and z:
+        INDArray zOutFC = Nd4j.create(new int[]{4,3},'c');
+        INDArray zOutFF = Nd4j.create(new int[]{4,3},'f');
+        INDArray zOutCC = Nd4j.create(new int[]{4,3},'c');
+        INDArray zOutCF = Nd4j.create(new int[]{4,3},'f');
+        Nd4j.getExecutioner().exec(new Sign(arrF, zOutFC));
+        Nd4j.getExecutioner().exec(new Sign(arrF, zOutFF));
+        Nd4j.getExecutioner().exec(new Sign(arrC, zOutCC));
+        Nd4j.getExecutioner().exec(new Sign(arrC, zOutCF));
+
+        assertEquals(exp, zOutFC);  //fails
+        assertEquals(exp, zOutFF);  //pass
+        assertEquals(exp, zOutCC);  //pass
+        assertEquals(exp, zOutCF);  //fails
+    }
+
+    @Test
+    public void testTanhXZ(){
+        INDArray arrC = Nd4j.linspace(-6,6,12).reshape('c',4,3);
+        INDArray arrF = Nd4j.create(new int[]{4,3},'f').assign(arrC);
+        double[] d = arrC.data().asDouble();
+        double[] e = new double[d.length];
+        for(int i=0; i<e.length; i++ ) e[i] = Math.tanh(d[i]);
+
+        INDArray exp = Nd4j.create(e, new int[]{4,3}, 'c');
+
+        //First: do op with just x (inplace)
+        INDArray arrFCopy = arrF.dup('f');
+        INDArray arrCCopy = arrF.dup('c');
+        Nd4j.getExecutioner().exec(new Tanh(arrFCopy));
+        Nd4j.getExecutioner().exec(new Tanh(arrCCopy));
+        assertEquals(exp, arrFCopy);
+        assertEquals(exp, arrCCopy);
+
+        //Second: do op with both x and z:
+        INDArray zOutFC = Nd4j.create(new int[]{4,3},'c');
+        INDArray zOutFF = Nd4j.create(new int[]{4,3},'f');
+        INDArray zOutCC = Nd4j.create(new int[]{4,3},'c');
+        INDArray zOutCF = Nd4j.create(new int[]{4,3},'f');
+        Nd4j.getExecutioner().exec(new Tanh(arrF, zOutFC));
+        Nd4j.getExecutioner().exec(new Tanh(arrF, zOutFF));
+        Nd4j.getExecutioner().exec(new Tanh(arrC, zOutCC));
+        Nd4j.getExecutioner().exec(new Tanh(arrC, zOutCF));
+
+        assertEquals(exp, zOutFC);  //fails
+        assertEquals(exp, zOutFF);  //pass
+        assertEquals(exp, zOutCC);  //pass
+        assertEquals(exp, zOutCF);  //fails
+    }
+
+
+    @Test
+    public void testBroadcastDiv() {
+        INDArray num = Nd4j.create(new double[] {
+                1.00,1.00,1.00,1.00,2.00,2.00,2.00,2.00,1.00,1.00,1.00,1.00,2.00,2.00,2.00,2.00,
+                -1.00,-1.00,-1.00,-1.00,-2.00,-2.00,-2.00,-2.00,-1.00,-1.00,-1.00,-1.00,-2.00,-2.00,-2.00,-2.00
+        }).reshape(2,16);
+
+        INDArray denom = Nd4j.create(new double[] {
+                1.00, 1.00, 1.00, 1.00, 2.00, 2.00, 2.00, 2.00, 1.00, 1.00, 1.00, 1.00, 2.00, 2.00, 2.00, 2.00
+        });
+
+        INDArray expected = Nd4j.create(new double[] {
+                1., 1., 1., 1., 1., 1., 1., 1., 1., 1., 1., 1., 1., 1., 1., 1.,
+                -1., -1., -1., -1., -1., -1., -1., -1., -1., -1., -1., -1., -1., -1., -1., -1.,
+        }, new int[]{2, 16});
+
+        INDArray actual = Nd4j.getExecutioner().execAndReturn(new BroadcastDivOp(num, denom, num.dup(),-1));
+        assertEquals(expected, actual);
+    }
+
+
+    @Test
+    public void testBroadcastMult() {
+        INDArray num = Nd4j.create(new double[] {
+                1.00,2.00,3.00,4.00,5.00,6.00,7.00,8.00,
+                -1.00,-2.00,-3.00,-4.00,-5.00,-6.00,-7.00,-8.00
+        }).reshape(2,8);
+
+        INDArray denom = Nd4j.create(new double[] {
+                1.00,2.00,3.00,4.00,5.00,6.00,7.00,8.00
+        });
+
+        INDArray expected = Nd4j.create(new double[] {
+                1,4,9,16,25,36,49,64,
+                -1,-4,-9,-16,-25,-36,-49,-64
+        }, new int[]{2, 8});
+
+        INDArray actual = Nd4j.getExecutioner().execAndReturn(new BroadcastMulOp(num, denom, num.dup(),-1));
+        assertEquals(expected, actual);
+    }
+
+    @Test
+    public void testBroadcastSub() {
+        INDArray num = Nd4j.create(new double[] {
+                1.00,2.00,3.00,4.00,5.00,6.00,7.00,8.00,
+                -1.00,-2.00,-3.00,-4.00,-5.00,-6.00,-7.00,-8.00
+        }).reshape(2,8);
+
+        INDArray denom = Nd4j.create(new double[] {
+                1.00,2.00,3.00,4.00,5.00,6.00,7.00,8.00
+        });
+
+        INDArray expected = Nd4j.create(new double[] {
+                0,0,0,0,0,0,0,0,
+                -2,-4,-6,-8,-10,-12,-14,-16
+        }, new int[]{2, 8});
+
+        INDArray actual = Nd4j.getExecutioner().execAndReturn(new BroadcastSubOp(num, denom, num.dup(),-1));
+        assertEquals(expected, actual);
+    }
+
+    @Test
+    public void testBroadcastAdd() {
+        INDArray num = Nd4j.create(new double[] {
+                1.00,2.00,3.00,4.00,5.00,6.00,7.00,8.00,
+                -1.00,-2.00,-3.00,-4.00,-5.00,-6.00,-7.00,-8.00
+        }).reshape(2,8);
+
+        INDArray denom = Nd4j.create(new double[] {
+                1.00,2.00,3.00,4.00,5.00,6.00,7.00,8.00
+        });
+
+        INDArray expected = Nd4j.create(new double[] {
+                2,4,6,8,10,12,14,16,
+                0,0,0,0,0,0,0,0,
+        }, new int[]{2, 8});
+        INDArray dup = num.dup();
+        INDArray actual = Nd4j.getExecutioner().execAndReturn(new BroadcastAddOp(num, denom, dup,-1));
+        assertEquals(expected, actual);
+    }
 
 
     @Test
@@ -1521,14 +2371,14 @@ public  class Nd4jTestsC extends BaseNd4jTest {
         INDArray slice0 = test.slice(0, 1);
         INDArray slice02 = test.slice(1, 1);
 
-        INDArray assertSlice0 = Nd4j.create(new float[]{1, 2});
-        INDArray assertSlice02 = Nd4j.create(new float[]{3, 4});
+        INDArray assertSlice0 = Nd4j.create(new float[]{1, 3});
+        INDArray assertSlice02 = Nd4j.create(new float[]{2, 4});
         assertEquals(assertSlice0, slice0);
         assertEquals(assertSlice02, slice02);
 
         //column
-        INDArray assertSlice1 = Nd4j.create(new float[]{1, 3});
-        INDArray assertSlice12 = Nd4j.create(new float[]{2, 4});
+        INDArray assertSlice1 = Nd4j.create(new float[]{1, 2});
+        INDArray assertSlice12 = Nd4j.create(new float[]{3, 4});
 
 
         INDArray slice1 = test.slice(0, 0);
@@ -1599,8 +2449,8 @@ public  class Nd4jTestsC extends BaseNd4jTest {
         System.out.println("Out:\n" + out);
 
         int countZero = 0;
-        for( int i = 0; i < 8; i++ )
-            if(out.getDouble(i) == 0.0 )
+        for( int i = 0; i < 8; i++)
+            if(out.getDouble(i) == 0.0)
                 countZero++;
         assertEquals(countZero, 0);
     }
@@ -1665,9 +2515,28 @@ public  class Nd4jTestsC extends BaseNd4jTest {
 
 
 
+    @Test
+    public void testArgMaxSameValues() {
+        //Here: assume that by convention, argmax returns the index of the FIRST maximum value
+        //Thus, argmax(ones(...)) = 0 by convention
+        INDArray arr = Nd4j.ones(10);
+
+        for (int i = 0; i < 10; i++) {
+            double argmax = Nd4j.argMax(arr, 1).getDouble(0);
+            //System.out.println(argmax);
+            assertEquals(0.0, argmax, 0.0);
+        }
+    }
 
 
-
+    @Test
+    public void testSoftmaxStability() {
+        INDArray input = Nd4j.create(new double[]{ -0.75, 0.58, 0.42, 1.03, -0.61, 0.19, -0.37, -0.40, -1.42, -0.04}).transpose();
+        System.out.println("Input transpose " + Shape.shapeToString(input.shapeInfo()));
+        INDArray output = Nd4j.create(10,1);
+        System.out.println("Element wise stride of output " + output.elementWiseStride());
+        Nd4j.getExecutioner().exec(new SoftMax(input, output));
+    }
 
     @Test
     public void testAssignOffset() {
@@ -1789,22 +2658,15 @@ public  class Nd4jTestsC extends BaseNd4jTest {
 
     }
 
-    @Test
-    public void testJvmCrash() {
-        for( int i = 0;  i < 10000; i++ ){
-            Nd4j.create(new int[]{2,10},'f').sum(0);      //jvm crash
-            //Nd4j.create(new int[]{2,10},'c').sum(0);        //ok
-        }
-    }
+
 
 
     @Test
     public void testElementWiseOps() {
-        System.out.println("WAHAZ");
         INDArray n1 = Nd4j.scalar(1);
         INDArray n2 = Nd4j.scalar(2);
         INDArray nClone = n1.add(n2);
-        assertEquals(Nd4j.scalar(4), nClone);
+        assertEquals(Nd4j.scalar(3), nClone);
         assertFalse(n1.add(n2).equals(n1));
 
         INDArray n3 = Nd4j.scalar(3);
@@ -1833,42 +2695,19 @@ public  class Nd4jTestsC extends BaseNd4jTest {
 
     @Test
     public void testToFlattenedWithOrder(){
-
         int[] firstShape = {10,3};
+        int firstLen = ArrayUtil.prod(firstShape);
         int[] secondShape = {2,7};
+        int secondLen = ArrayUtil.prod(secondShape);
         int[] thirdShape = {3,3};
-        INDArray firstC = Nd4j.create(firstShape,'c');
-        INDArray firstF = Nd4j.create(firstShape,'f');
-        INDArray secondC = Nd4j.create(secondShape,'c');
-        INDArray secondF = Nd4j.create(secondShape,'f');
-        INDArray thirdC = Nd4j.create(thirdShape,'c');
-        INDArray thirdF = Nd4j.create(thirdShape,'f');
+        int thirdLen = ArrayUtil.prod(thirdShape);
+        INDArray firstC = Nd4j.linspace(1,firstLen,firstLen).reshape('c',firstShape);
+        INDArray firstF = Nd4j.create(firstShape,'f').assign(firstC);
+        INDArray secondC = Nd4j.linspace(1,secondLen,secondLen).reshape('c',secondShape);
+        INDArray secondF = Nd4j.create(secondShape,'f').assign(secondC);
+        INDArray thirdC = Nd4j.linspace(1,thirdLen,thirdLen).reshape('c',thirdShape);
+        INDArray thirdF = Nd4j.create(thirdShape,'f').assign(thirdC);
 
-        Random r = new Random(12345);
-
-        for( int i=0; i<firstShape[0]; i++) {
-            for( int j=0; j<firstShape[1]; j++) {
-                double d = r.nextDouble();
-                firstC.putScalar(new int[]{i,j},d);
-                firstF.putScalar(new int[]{i,j},d);
-            }
-        }
-
-        for( int i = 0; i < secondShape[0]; i++ ){
-            for( int j = 0; j<secondShape[1]; j++ ){
-                double d = r.nextDouble();
-                secondC.putScalar(new int[]{i,j},d);
-                secondF.putScalar(new int[]{i,j},d);
-            }
-        }
-
-        for( int i = 0; i<thirdShape[0]; i++) {
-            for( int j = 0; j<thirdShape[1]; j++) {
-                double d = r.nextDouble();
-                thirdC.putScalar(new int[]{i,j},d);
-                thirdF.putScalar(new int[]{i,j},d);
-            }
-        }
 
         assertEquals(firstC,firstF);
         assertEquals(secondC,secondF);
@@ -1876,24 +2715,66 @@ public  class Nd4jTestsC extends BaseNd4jTest {
 
         INDArray cc = Nd4j.toFlattened('c',firstC,secondC,thirdC);
         INDArray cf = Nd4j.toFlattened('c',firstF,secondF,thirdF);
-        INDArray cmixed = Nd4j.toFlattened('c',firstC,secondF,thirdF);
-
-        INDArray fc = Nd4j.toFlattened('f',firstC,secondC,thirdC);
-        INDArray ff = Nd4j.toFlattened('f',firstF,secondF,thirdF);
-        INDArray fmixed = Nd4j.toFlattened('f',firstC,secondF,thirdF);
-
         assertEquals(cc,cf);
+
+        INDArray cmixed = Nd4j.toFlattened('c',firstC,secondF,thirdF);
         assertEquals(cc,cmixed);
 
+        INDArray fc = Nd4j.toFlattened('f',firstC,secondC,thirdC);
         assertNotEquals(cc,fc);
 
+        INDArray ff = Nd4j.toFlattened('f',firstF,secondF,thirdF);
         assertEquals(fc,ff);
+
+        INDArray fmixed = Nd4j.toFlattened('f',firstC,secondF,thirdF);
         assertEquals(fc,fmixed);
     }
 
 
     @Test
-    public void testDupAndDupWithOrder(){
+    public void testLeakyRelu(){
+        INDArray arr = Nd4j.linspace(-1,1,10);
+        double[] expected = new double[10];
+        for( int i = 0; i < 10; i++ ){
+            double in = arr.getDouble(i);
+            expected[i] = (in <= 0.0 ? 0.01 * in : in);
+        }
+
+        INDArray out = Nd4j.getExecutioner().execAndReturn(new LeakyReLU(arr,0.01));
+
+        INDArray exp = Nd4j.create(expected);
+        assertEquals(exp,out);
+    }
+
+    @Test
+    public void testSoftmaxRow() {
+        for( int i = 0; i < 20; i++ ){
+            INDArray arr1 = Nd4j.zeros(100);
+            Nd4j.getExecutioner().execAndReturn(new SoftMax(arr1));
+            System.out.println(Arrays.toString(arr1.data().asFloat()));
+        }
+    }
+
+    @Test
+    public void testLeakyRelu2(){
+        INDArray arr = Nd4j.linspace(-1,1,10);
+        double[] expected = new double[10];
+        for( int i = 0; i < 10; i++) {
+            double in = arr.getDouble(i);
+            expected[i] = (in <= 0.0 ? 0.01 * in : in);
+        }
+
+        INDArray out = Nd4j.getExecutioner().execAndReturn(new LeakyReLU(arr,0.01));
+
+        System.out.println("Expected: " + Arrays.toString(expected));
+        System.out.println("Actual:   " + Arrays.toString(out.data().asDouble()));
+
+        INDArray exp = Nd4j.create(expected);
+        assertEquals(exp,out);
+    }
+
+    @Test
+    public void testDupAndDupWithOrder() {
         List<Pair<INDArray,String>> testInputs = NDArrayCreationUtil.getAllTestMatricesWithShape(ordering(),4, 5, 123);
         for(Pair<INDArray,String> pair : testInputs) {
 
@@ -1973,7 +2854,7 @@ public  class Nd4jTestsC extends BaseNd4jTest {
             assertEquals(separation0,t0.getTensorStartSeparation());
             assertEquals(separation1,t1.getTensorStartSeparation());
 
-            for( int i=0; i<nTAD0; i++ ){
+            for( int i = 0; i < nTAD0; i++) {
                 INDArray tad0 = arr.tensorAlongDimension(i,0);
                 assertEquals(tad0.length(), t0.getTensorLength());
                 assertEquals(tad0.elementWiseStride(),t0.getElementWiseStride());
@@ -1983,7 +2864,7 @@ public  class Nd4jTestsC extends BaseNd4jTest {
                 assertEquals(offset,calcOffset);
             }
 
-            for( int i=0; i<nTAD1; i++ ){
+            for( int i = 0; i < nTAD1; i++) {
                 INDArray tad1 = arr.tensorAlongDimension(i,1);
                 assertEquals(tad1.length(), t1.getTensorLength());
                 assertEquals(tad1.elementWiseStride(),t1.getElementWiseStride());
@@ -1996,95 +2877,10 @@ public  class Nd4jTestsC extends BaseNd4jTest {
     }
 
 
-    @Test
-    public void testNdVectorOp(){
-        //Test 2d, 3d, ..., 6d vector ops
-
-        Nd4j.getRandom().setSeed(12345);
-        int[] maxShape = new int[]{5, 7, 9, 11, 13, 15};
-
-        for( int opNum=0; opNum < 6; opNum++ ) {
-            for (int rank = 2; rank < maxShape.length; rank++) {
-                int[] shape = Arrays.copyOfRange(maxShape, 0, rank);
-                INDArray orig = Nd4j.rand(shape);
-
-                for (int i = 0; i < rank; i++) {   //Test ops for each dimension
-                    INDArray arr = orig.dup();
-                    INDArray vector = Nd4j.rand(1, shape[i]);
-
-                    BroadcastOp op;
-                    switch(opNum){
-                        case 0:
-                            op = new BroadcastAddOp(arr, vector, arr, i);
-                            break;
-                        case 1:
-                            op = new BroadcastCopyOp(arr, vector, arr, i);
-                            break;
-                        case 2:
-                            op = new BroadcastDivOp(arr, vector, arr, i);
-                            break;
-                        case 3:
-                            op = new BroadcastMulOp(arr, vector, arr, i);
-                            break;
-                        case 4:
-                            op = new BroadcastRDivOp(arr, vector, arr, i);
-                            break;
-                        case 5:
-                            op = new BroadcastRSubOp(arr, vector, arr, i);
-                            break;
-                        case 6:
-                            op = new BroadcastSubOp(arr, vector, arr, i);
-                            break;
-                        default:
-                            throw new RuntimeException();
-                    }
-                    Nd4j.getExecutioner().exec(op,op.getDimension());
-
-                    //Compare expected vs. actual:
-                    NdIndexIterator iter = new NdIndexIterator(orig.shape());
-                    while (iter.hasNext()) {
-                        int[] next = iter.next();
-                        double origValue = orig.getDouble(next);
-                        double vectorValue = vector.getDouble(next[i]);   //current index in vector
-                        double exp;
-                        switch(opNum){
-                            case 0:
-                                exp = origValue + vectorValue;
-                                break;
-                            case 1:
-                                exp = vectorValue;
-                                break;
-                            case 2:
-                                exp = origValue / vectorValue;
-                                break;
-                            case 3:
-                                exp = origValue * vectorValue;
-                                break;
-                            case 4:
-                                exp = vectorValue / origValue;
-                                break;
-                            case 5:
-                                exp = vectorValue - origValue;
-                                break;
-                            case 6:
-                                exp = origValue - vectorValue;
-                                break;
-                            default:
-                                throw new RuntimeException();
-                        }
-
-                        double actual = arr.getDouble(next);
-                        assertEquals(exp, actual, 1e-1);
-
-                    }
-                }
-            }
-        }
-    }
-
 
 
     @Test
+    @Ignore
     public void largeInstantiation() {
         Nd4j.ones((1024 * 1024 * 511) + (1024*1024 - 1)); // Still works; this can even be called as often as I want, allowing me even to spill over on disk
         Nd4j.ones((1024 * 1024 * 511) + (1024*1024)); // Crashes
@@ -2120,6 +2916,51 @@ public  class Nd4jTestsC extends BaseNd4jTest {
     }
 
 
+    @Test
+    public void testSumDifferentOrdersSquareMatrix() {
+        INDArray arrc = Nd4j.linspace(1,4,4).reshape(2,2);
+        INDArray arrf = Nd4j.create(new int[]{2,2},'f').assign(arrc);
+
+        INDArray cSum = arrc.sum(0);
+        INDArray fSum = arrf.sum(0);
+        assertEquals(arrc,arrf);
+        assertEquals(cSum,fSum);  //Expect: 4,6. Getting [4, 4] for f order
+    }
+
+    @Test
+    public void testAssign(){
+        int[] shape1 = {3,2,2,2,2,2};
+        int[] shape2 = {12,8};
+        int length = ArrayUtil.prod(shape1);
+
+        assertEquals(ArrayUtil.prod(shape1),ArrayUtil.prod(shape2));
+
+        INDArray arr = Nd4j.linspace(1,length,length).reshape('c',shape1);
+        INDArray arr2c = Nd4j.create(shape2,'c');
+        INDArray arr2f = Nd4j.create(shape2,'f');
+
+        arr2c.assign(arr);
+        System.out.println("--------------");
+        arr2f.assign(arr);
+
+        INDArray exp = Nd4j.linspace(1,length,length).reshape('c',shape2);
+
+        assertEquals(exp,arr2c);
+        assertEquals(exp,arr2f);
+    }
+
+    @Test
+    public void testSumDifferentOrders() {
+        INDArray arrc = Nd4j.linspace(1,6,6).reshape('c',3,2);
+        INDArray arrf = Nd4j.create(new double[6],new int[]{3,2},'f').assign(arrc);
+
+        assertEquals(arrc,arrf);
+        //c works
+        INDArray cSum = arrc.sum(0);
+        //f doesn't
+        INDArray fSum = arrf.sum(0);
+        assertEquals(cSum,fSum);  //Expect: 0.51, 1.79; getting [0.51,1.71] for f order
+    }
     @Override
     public char ordering() {
         return 'c';

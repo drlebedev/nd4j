@@ -956,7 +956,7 @@ public class Nd4j {
      * @param offset the offset for the view
      * @return the new view of the data buffer
      */
-    public static DataBuffer createBuffer(DataBuffer underlyingBuffer,int offset,int length) {
+    public static DataBuffer createBuffer(DataBuffer underlyingBuffer,long offset,long length) {
         return DATA_BUFFER_FACTORY_INSTANCE.create(underlyingBuffer,offset,length);
     }
 
@@ -1090,6 +1090,8 @@ public class Nd4j {
      */
     public static DataBuffer createBuffer(int[] shape, DataBuffer.Type type) {
         int length = ArrayUtil.prod(shape);
+        if(type == DataBuffer.Type.INT)
+            return createBuffer(new int[length]);
         return type == DataBuffer.Type.DOUBLE ? createBuffer(new double[length]) : createBuffer(new float[length]);
     }
 
@@ -1149,7 +1151,7 @@ public class Nd4j {
      * @param length the length of te buffer
      * @return the buffer to create
      */
-    public static DataBuffer createBuffer(int length) {
+    public static DataBuffer createBuffer(long length) {
         DataBuffer ret;
         if (dataType() == DataBuffer.Type.FLOAT)
             ret = DATA_BUFFER_FACTORY_INSTANCE.createFloat(length);
@@ -1861,7 +1863,7 @@ public class Nd4j {
         int count = 0;
 
         if(read == 'c') {
-            DataBuffer buf = Nd4j.createBuffer(offset + ArrayUtil.prod(shape) * 2);
+            DataBuffer buf = Nd4j.createBuffer(offset + ArrayUtil.prodLong(shape) * 2);
             for(int i = 0; i < ArrayUtil.prod(shape); i+= 2) {
                 String val = dis.readUTF();
                 IComplexNumber num = Nd4j.parseComplexNumber(val);
@@ -1875,7 +1877,7 @@ public class Nd4j {
 
         }
         else {
-            DataBuffer buf = Nd4j.createBuffer(offset + ArrayUtil.prod(shape));
+            DataBuffer buf = Nd4j.createBuffer(offset + ArrayUtil.prodLong(shape));
             for(int i = 0; i < ArrayUtil.prod(shape); i++) {
                 String val = dis.readUTF();
                 buf.put(i,Double.valueOf(val));
@@ -1928,6 +1930,19 @@ public class Nd4j {
 
 
 
+    private static int[] toIntArray(int length,DataBuffer buffer) {
+        int[] ret = new int[length];
+        for(int i = 0; i < length; i++) {
+            ret[i] = buffer.getInt(i);
+        }
+        return ret;
+    }
+
+    public static INDArray createArrayFromShapeBuffer(DataBuffer data,DataBuffer shapeInfo) {
+        int rank = Shape.rank(shapeInfo);
+        int offset = Shape.offset(shapeInfo);
+        return Nd4j.create(data,toIntArray(rank, Shape.shapeOf(shapeInfo)),toIntArray(rank,Shape.stride(shapeInfo)),offset,Shape.order(shapeInfo));
+    }
 
 
     /**
@@ -1938,10 +1953,14 @@ public class Nd4j {
      * @throws IOException
      */
     public static INDArray read(DataInputStream dis) throws IOException {
-        return SerializationUtils.readObject(dis);
-
-
+        DataBuffer shapeInformation = Nd4j.createBuffer(new int[1], DataBuffer.Type.INT);
+        shapeInformation.read(dis);
+        int length = Shape.length(shapeInformation);
+        DataBuffer data = Nd4j.createBuffer(length);
+        data.read(dis);
+        return createArrayFromShapeBuffer(data,shapeInformation);
     }
+
 
     /**
      * Write an ndarray to the specified outputstream
@@ -1951,7 +1970,13 @@ public class Nd4j {
      * @throws IOException
      */
     public static void write(INDArray arr, DataOutputStream dataOutputStream) throws IOException {
-        SerializationUtils.writeObject(arr,dataOutputStream);
+        //BaseDataBuffer.write(...) doesn't know about strides etc, so dup (or equiv. strategy) is necessary here
+        //Furthermore, because we only want to save the *actual* data for a view (not the full data), the shape info
+        // (mainly strides, offset, element-wise stride) may be different in the duped array vs. the view array
+        if(arr.isView()) arr = arr.dup();
+
+        arr.shapeInfoDataBuffer().write(dataOutputStream);
+        arr.data().write(dataOutputStream);
     }
 
     /**
@@ -2273,6 +2298,19 @@ public class Nd4j {
     }
 
     /**
+     * Create a random ndarray with the given shape and array order
+     *
+     * @param order the order of the ndarray to return
+     * @param shape the shape of the ndarray
+     * @return the random ndarray with the specified shape
+     */
+    public static INDArray rand(char order, int[] shape) {
+        INDArray ret = INSTANCE.rand(order, shape);
+        logCreationIfNecessary(ret);
+        return ret;
+    }
+
+    /**
      * Create a random ndarray with the given shape using
      * the current time as the seed
      *
@@ -2301,6 +2339,20 @@ public class Nd4j {
         logCreationIfNecessary(ret);
         return ret;
     }
+
+    /**
+     * Create a random ndarray with the given shape and output order
+     *
+     * @param rows    the number of rows in the matrix
+     * @param columns the number of columns in the matrix
+     * @return the random ndarray with the specified shape
+     */
+    public static INDArray rand(char order, int rows, int columns) {
+        INDArray ret = INSTANCE.rand(order, rows, columns);
+        logCreationIfNecessary(ret);
+        return ret;
+    }
+
 
     /**
      * Create a random ndarray with the given shape using given seed
@@ -2429,6 +2481,18 @@ public class Nd4j {
     }
 
     /**
+     * Random normal N(0,1) with the specified shape and array order
+     *
+     * @param order order of the output ndarray
+     * @param shape the shape of the ndarray
+     */
+    public static INDArray randn(char order, int[] shape) {
+        INDArray ret = INSTANCE.randn(order,shape);
+        logCreationIfNecessary(ret);
+        return ret;
+    }
+
+    /**
      * Random normal using the specified seed
      *
      * @param shape the shape of the ndarray
@@ -2449,6 +2513,19 @@ public class Nd4j {
      */
     public static INDArray randn(int rows, int columns) {
         INDArray ret = INSTANCE.randn(rows, columns, Nd4j.getRandom());
+        logCreationIfNecessary(ret);
+        return ret;
+    }
+
+    /**
+     * Random normal N(0,1) with the specified shape and array order
+     *
+     * @param order   the order of the output array
+     * @param rows    the number of rows in the matrix
+     * @param columns the number of columns in the matrix
+     */
+    public static INDArray randn(char order, int rows, int columns) {
+        INDArray ret = INSTANCE.randn(order, rows, columns);
         logCreationIfNecessary(ret);
         return ret;
     }
@@ -3927,7 +4004,7 @@ public class Nd4j {
             shape = new int[]{1,1};
         }
 
-        IComplexNDArray ret = INSTANCE.createComplex(createBuffer(ArrayUtil.prod(shape) * 2), shape, 0, ordering);
+        IComplexNDArray ret = INSTANCE.createComplex(createBuffer(ArrayUtil.prodLong(shape) * 2), shape, 0, ordering);
         logCreationIfNecessary(ret);
         return ret;
     }
@@ -4644,6 +4721,10 @@ public class Nd4j {
      */
     public void initWithBackend(Nd4jBackend backend) {
         try {
+            if(System.getProperties().getProperty("backends") != null &&
+                    !System.getProperties().getProperty("backends").contains(backend.getClass().getName())) {
+                return;
+            }
             props = Nd4jContext.getInstance().getConf();
             InputStream is = backend.getConfigurationResource().getInputStream();
             Nd4jContext.getInstance().updateProperties(is);

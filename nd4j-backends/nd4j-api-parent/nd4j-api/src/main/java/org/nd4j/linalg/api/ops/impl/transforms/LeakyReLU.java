@@ -40,42 +40,52 @@ public class LeakyReLU extends BaseTransformOp {
 
     public LeakyReLU() {
         alpha = 0.01;
+        this.extraArgs = new Object[] {alpha};
     }
     
     public LeakyReLU(INDArray x, double alpha) {
         super(x);
         this.alpha = alpha;
+        this.extraArgs = new Object[] {alpha};
+
     }
     
     public LeakyReLU(INDArray x, INDArray z, double alpha) {
         super(x, z);
         this.alpha = alpha;
+        this.extraArgs = new Object[] {alpha};
     }
 
-    public LeakyReLU(INDArray x, INDArray z, int n, double alpha) {
+    public LeakyReLU(INDArray x, INDArray z, long n, double alpha) {
         super(x, z, n);
         this.alpha = alpha;
+        this.extraArgs = new Object[] {alpha};
     }
 
-    public LeakyReLU(INDArray x, INDArray y, INDArray z, int n, double alpha) {
+    public LeakyReLU(INDArray x, INDArray y, INDArray z, long n, double alpha) {
         super(x, y, z, n);
         this.alpha = alpha;
+        this.extraArgs = new Object[] {alpha};
     }
 
     public LeakyReLU(INDArray x, INDArray z) {
         super(x, z);
+        this.extraArgs = new Object[] {alpha};
     }
 
-    public LeakyReLU(INDArray x, INDArray z, int n) {
+    public LeakyReLU(INDArray x, INDArray z, long n) {
         super(x, z, n);
+        this.extraArgs = new Object[] {alpha};
     }
 
-    public LeakyReLU(INDArray x, INDArray y, INDArray z, int n) {
+    public LeakyReLU(INDArray x, INDArray y, INDArray z, long n) {
         super(x, y, z, n);
+        this.extraArgs = new Object[] {alpha};
     }
 
     public LeakyReLU(INDArray x) {
         super(x);
+        this.extraArgs = new Object[] {alpha};
     }
 
     @Override
@@ -108,12 +118,12 @@ public class LeakyReLU extends BaseTransformOp {
 
     @Override
     public float op(float origin, float other) {
-        return origin < 0 ? (float)alpha*origin : origin;
+        return origin < 0 ? (float) alpha * origin : origin;
     }
 
     @Override
     public double op(double origin, double other) {
-        return origin < 0 ?  alpha*origin : origin;
+        return origin < 0 ?  alpha * origin : origin;
     }
 
     @Override
@@ -159,7 +169,7 @@ public class LeakyReLU extends BaseTransformOp {
     }
 
     @Override
-    public void init(INDArray x, INDArray y, INDArray z, int n) {
+    public void init(INDArray x, INDArray y, INDArray z, long n) {
         super.init(x, y, z, n);
         this.extraArgs = new Object[] {alpha};
     }

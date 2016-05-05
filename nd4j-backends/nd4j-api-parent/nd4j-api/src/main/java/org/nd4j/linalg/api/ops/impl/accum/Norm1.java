@@ -25,6 +25,7 @@ import org.nd4j.linalg.api.ndarray.INDArray;
 import org.nd4j.linalg.api.ops.BaseAccumulation;
 import org.nd4j.linalg.api.ops.Op;
 import org.nd4j.linalg.factory.Nd4j;
+import org.nd4j.linalg.ops.transforms.Transforms;
 
 /**
  * Sum of absolute values
@@ -35,11 +36,11 @@ public class Norm1 extends BaseAccumulation {
     public Norm1() {
     }
 
-    public Norm1(INDArray x, INDArray y, INDArray z, int n) {
+    public Norm1(INDArray x, INDArray y, INDArray z, long n) {
         super(x, y, z, n);
     }
 
-    public Norm1(INDArray x, INDArray y, int n) {
+    public Norm1(INDArray x, INDArray y, long n) {
         super(x, y, n);
     }
 
@@ -51,6 +52,10 @@ public class Norm1 extends BaseAccumulation {
         super(x, y);
     }
 
+    @Override
+    public INDArray noOp() {
+        return Transforms.abs(x());
+    }
 
     @Override
     public double op(double origin) {

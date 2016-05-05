@@ -36,20 +36,32 @@ public class ManhattanDistance extends BaseAccumulation {
     public ManhattanDistance() {
     }
 
-    public ManhattanDistance(INDArray x, INDArray y, INDArray z, int n) {
+    public ManhattanDistance(INDArray x, INDArray y, INDArray z, long n) {
         super(x, y, z, n);
+        extraArgs = new Object[2];
+        extraArgs[0] = 0.0f;
+        extraArgs[1] = 0.0f;
     }
 
-    public ManhattanDistance(INDArray x, INDArray y, int n) {
+    public ManhattanDistance(INDArray x, INDArray y, long n) {
         super(x, y, n);
+        extraArgs = new Object[2];
+        extraArgs[0] = 0.0f;
+        extraArgs[1] = 0.0f;
     }
 
     public ManhattanDistance(INDArray x) {
         super(x);
+        extraArgs = new Object[2];
+        extraArgs[0] = 0.0f;
+        extraArgs[1] = 0.0f;
     }
 
     public ManhattanDistance(INDArray x, INDArray y) {
         super(x, y);
+        extraArgs = new Object[2];
+        extraArgs[0] = 0.0f;
+        extraArgs[1] = 0.0f;
     }
 
     @Override
@@ -175,7 +187,7 @@ public class ManhattanDistance extends BaseAccumulation {
     public Op opForDimension(int index, int dimension) {
         ManhattanDistance ret;
         if (y() != null)
-            ret = new ManhattanDistance(x.vectorAlongDimension(index, dimension), y.vectorAlongDimension(index, dimension), x.length());
+            ret = new ManhattanDistance(x.vectorAlongDimension(index, dimension), y.vectorAlongDimension(index, dimension), x.lengthLong());
         else
             ret = new ManhattanDistance(x.vectorAlongDimension(index, dimension));
         ret.setApplyFinalTransform(applyFinalTransform());
@@ -186,7 +198,7 @@ public class ManhattanDistance extends BaseAccumulation {
     public Op opForDimension(int index, int... dimension) {
         ManhattanDistance ret;
         if (y() != null)
-            ret = new ManhattanDistance(x.tensorAlongDimension(index, dimension), y.tensorAlongDimension(index, dimension), x.length());
+            ret = new ManhattanDistance(x.tensorAlongDimension(index, dimension), y.tensorAlongDimension(index, dimension), x.lengthLong());
         else
             ret = new ManhattanDistance(x.tensorAlongDimension(index, dimension));
         ret.setApplyFinalTransform(applyFinalTransform());

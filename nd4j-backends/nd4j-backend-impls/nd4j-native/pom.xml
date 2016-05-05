@@ -23,7 +23,10 @@
             <artifactId>nd4j-api</artifactId>
             <version>${project.version}</version>
         </dependency>
-
+        <dependency>
+            <groupId>junit</groupId>
+            <artifactId>junit</artifactId>
+        </dependency>
     </dependencies>
 
     <build>
@@ -34,14 +37,19 @@
                 <artifactId>maven-surefire-plugin</artifactId>
                 <version>2.19.1</version>
                 <configuration>
-                    <testSourceDirectory>../../nd4j-tests/src/test/java</testSourceDirectory>
+                    <environmentVariables>
+                        <LD_LIBRARY_PATH>${env.LD_LIBRARY_PATH}:${user.dir}:${env.LIBND4J_HOME}/blasbuild/cpu/blas/</LD_LIBRARY_PATH>
+                    </environmentVariables>
                     <includes>
                         <include>*.java</include>
+                        <include>**/Test*.java</include>
+                        <include>**/*Test.java</include>
+                        <include>**/*TestCase.java</include>
                     </includes>
+                    <junitArtifactName>junit:junit</junitArtifactName>
                     <systemPropertyVariables>
                         <org.nd4j.linalg.defaultbackend>org.nd4j.linalg.cpu.nativecpu.CpuBackend</org.nd4j.linalg.defaultbackend>
                         <org.nd4j.linalg.tests.backendstorun>org.nd4j.linalg.cpu.nativecpu.CpuBackend</org.nd4j.linalg.tests.backendstorun>
-
                     </systemPropertyVariables>
                 </configuration>
             </plugin>
@@ -58,6 +66,11 @@
                 </dependencies>
                 <configuration>
                     <copyLibs>true</copyLibs>
+                    <compilerOptions>
+                        <compilerOption>
+                            -std=c++11
+                        </compilerOption>
+                    </compilerOptions>
                     <properties>${javacpp.platform.properties}</properties>
                     <propertyKeysAndValues>
                         <property>
@@ -93,13 +106,43 @@
                                 <classOrPackageName>org.nd4j.nativeblas.NativeOps</classOrPackageName>
                             </classOrPackageNames>
                             <copyLibs>true</copyLibs>
-
                         </configuration>
                     </execution>
                 </executions>
             </plugin>
             <plugin>
                 <artifactId>maven-jar-plugin</artifactId>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-enforcer-plugin</artifactId>
+                <version>1.4.1</version>
+                <executions>
+                    <execution>
+                        <id>libnd4j-checks</id>
+                        <goals>
+                            <goal>enforce</goal>
+                        </goals>
+                        <configuration>
+                            <rules>
+                                <requireProperty>
+                                    <property>env.LIBND4J_HOME</property>
+                                    <message>You must set the LIBND4J_HOME environment variable!</message>
+                                    <regex>.*/.*</regex>
+                                    <regexMessage>!!! LIBND4J_HOME must be a valid unix path!</regexMessage>
+                                </requireProperty>
+                                <requireFilesExist>
+                                    <files>
+                                        <file>${env.LIBND4J_HOME}/blas/NativeBlas.h</file>
+                                        <file>${env.LIBND4J_HOME}/blasbuild/cpu/blas</file>
+                                    </files>
+                                    <message>!!! You have to compile libnd4j with cpu support first!</message>
+                                </requireFilesExist>
+                            </rules>
+                            <fail>true</fail>
+                        </configuration>
+                    </execution>
+                </executions>
             </plugin>
         </plugins>
     </build>
