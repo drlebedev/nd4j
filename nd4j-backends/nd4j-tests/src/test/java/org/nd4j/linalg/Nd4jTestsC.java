@@ -628,6 +628,7 @@ public  class Nd4jTestsC extends BaseNd4jTest {
         assertEquals(expAlong1, alongDim1);
 
         //1d: col vector
+        System.out.println("----------------------------------");
         INDArray col = Nd4j.create(new double[]{1,2,3,1},new int[]{4,1});
         INDArray alongDim0col = Nd4j.getExecutioner().execAndReturn(new IsMax(col.dup(),0));
         INDArray alongDim1col = Nd4j.getExecutioner().execAndReturn(new IsMax(col.dup(),1));
@@ -635,9 +636,25 @@ public  class Nd4jTestsC extends BaseNd4jTest {
         INDArray expAlong0col = Nd4j.create(new double[]{0,0,1,0}, new int[]{4,1});
         INDArray expAlong1col = Nd4j.ones(new int[]{4,1});
 
-        assertEquals(expAlong0col, alongDim0col);
-        assertEquals(expAlong1col, alongDim1col);
 
+
+        assertEquals(expAlong1col, alongDim1col);
+        assertEquals(expAlong0col, alongDim0col);
+
+
+
+
+        /*
+        if (blockIdx.x == 0) {
+            printf("original Z shape: \n");
+            shape::printShapeInfoLinear(zShapeInfo);
+
+            printf("Target dimension: [%i], dimensionLength: [%i]\n", dimension[0], dimensionLength);
+
+            printf("TAD shape: \n");
+            shape::printShapeInfoLinear(tad->tadOnlyShapeInfo);
+        }
+        */
 
         //2d:
         //[1 0 2]
@@ -648,6 +665,7 @@ public  class Nd4jTestsC extends BaseNd4jTest {
         //Along dim 1:
         //[0 0 1]
         //[0 1 0]
+        System.out.println("---------------------");
         INDArray orig2d = Nd4j.create(new double[][]{{1,0,2},{2,3,1}});
         INDArray alongDim0c_2d = Nd4j.getExecutioner().execAndReturn(new IsMax(orig2d.dup('c'),0));
         INDArray alongDim0f_2d = Nd4j.getExecutioner().execAndReturn(new IsMax(orig2d.dup('f'),0));
@@ -661,6 +679,28 @@ public  class Nd4jTestsC extends BaseNd4jTest {
         assertEquals(expAlong1_2d, alongDim1c_2d);
         assertEquals(expAlong1_2d, alongDim1f_2d);
 
+    }
+
+    @Test
+    public void testIMaxSingleDim1() {
+        INDArray orig2d = Nd4j.create(new double[][]{{1,0,2},{2,3,1}});
+
+        INDArray result = Nd4j.argMax(orig2d.dup('c'),0);
+
+        System.out.println("IMAx result: " + result);
+    }
+
+    @Test
+    public void testIsMaxSingleDim1() {
+        INDArray orig2d = Nd4j.create(new double[][]{{1,0,2},{2,3,1}});
+        INDArray alongDim0c_2d = Nd4j.getExecutioner().execAndReturn(new IsMax(orig2d.dup('c'),0));
+        INDArray expAlong0_2d = Nd4j.create(new double[][]{{0,0,1},{1,1,0}});
+
+        System.out.println("Original shapeInfo: " + orig2d.dup('c').shapeInfoDataBuffer());
+
+        System.out.println("Expected: " + Arrays.toString(expAlong0_2d.data().asFloat()));
+        System.out.println("Actual: " + Arrays.toString(alongDim0c_2d.data().asFloat()));
+        assertEquals(expAlong0_2d, alongDim0c_2d);
     }
 
     @Test
@@ -1778,6 +1818,15 @@ public  class Nd4jTestsC extends BaseNd4jTest {
         assertEquals(linear.getDouble(0, 1), 1, 1e-1);
     }
 
+    @Test(expected = IllegalArgumentException.class)
+    public void testSize() {
+        INDArray arr = Nd4j.create(4,5);
+
+        for( int i = 0; i< 6; i++) {
+            //This should fail for i >= 2, but doesn't
+            System.out.println(arr.size(i));
+        }
+    }
 
 
 
@@ -1914,7 +1963,7 @@ public  class Nd4jTestsC extends BaseNd4jTest {
         INDArray test = Nd4j.tensorMmul(col, w, new int[][]{{1, 2, 3}, {1, 2, 3}});
         INDArray assertion2 = Nd4j.create(new double[]{3., 3., 3., 3., 3., 3., 3., 3., 7., 7., 7., 7., 7., 7., 7., 7., 3., 3.
                 , 3., 3., 3., 3., 3., 3., 7., 7., 7., 7., 7., 7., 7., 7.}, new int[]{1, 4, 4, 2}, new int[]{16, 8, 2, 1}, 0, 'f');
-        assertion2.setOrder('f');
+//        assertion2.setOrder('f');
         assertEquals(assertion2,test);
     }
 
@@ -2141,6 +2190,35 @@ public  class Nd4jTestsC extends BaseNd4jTest {
 
             assertEquals(exp01, p1);
             assertEquals(exp10, p2);
+
+            assertEquals(3, p1.rows());
+            assertEquals(4, p1.columns());
+
+            assertEquals(4, p2.rows());
+            assertEquals(3, p2.columns());
+        }
+
+        //2d, v2
+        orig = Nd4j.linspace(1,4,4).reshape('c',1,4);
+        exp01 = orig.permute(0,1);
+        exp10 = orig.permute(1,0);
+        list1 = NDArrayCreationUtil.getAllTestMatricesWithShape(1,4,12345);
+        list2 = NDArrayCreationUtil.getAllTestMatricesWithShape(1,4,12345);
+        for( int i=0; i<list1.size(); i++ ){
+            INDArray p1 = list1.get(i).getFirst().assign(orig).permutei(0,1);
+            INDArray p2 = list2.get(i).getFirst().assign(orig).permutei(1,0);
+
+            assertEquals(exp01, p1);
+            assertEquals(exp10, p2);
+
+            assertEquals(1, p1.rows());
+            assertEquals(4, p1.columns());
+            assertEquals(4, p2.rows());
+            assertEquals(1, p2.columns());
+            assertTrue(p1.isRowVector());
+            assertFalse(p1.isColumnVector());
+            assertFalse(p2.isRowVector());
+            assertTrue(p2.isColumnVector());
         }
 
         //3d:

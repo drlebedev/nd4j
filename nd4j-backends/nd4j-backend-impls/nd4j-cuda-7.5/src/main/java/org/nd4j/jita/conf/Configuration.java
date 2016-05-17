@@ -34,11 +34,15 @@ public class Configuration implements Serializable {
 
     @Getter private ExecutionModel executionModel = ExecutionModel.SEQUENTIAL;
 
-    @Getter private AllocationModel allocationModel = AllocationModel.DIRECT;
+    @Getter private AllocationModel allocationModel = AllocationModel.CACHE_ALL;
 
-    @Getter private AllocationStatus firstMemory = AllocationStatus.HOST;
+    @Getter private AllocationStatus firstMemory = AllocationStatus.DEVICE;
 
-    @Getter private boolean debug = true;
+    @Getter private boolean debug = false;
+
+    @Getter private boolean verbose = false;
+
+    private boolean forceSingleGPU = true;
 
     /**
      * Keep this value between 0.01 and 0.95 please
@@ -58,7 +62,7 @@ public class Configuration implements Serializable {
     /**
      * Number of buckets/garbage collectors for host memory
      */
-    @Getter private int numberOfGcThreads= 4;
+    @Getter private int numberOfGcThreads= 6;
 
     /**
      * Deallocation aggressiveness
@@ -76,7 +80,7 @@ public class Configuration implements Serializable {
     /**
      * Maximum allocated per-device memory, in bytes
      */
-    @Getter private long maximumDeviceAllocation = 1 * 1024 * 1024 * 1024L;
+    @Getter private long maximumDeviceAllocation = 4 * 1024 * 1024 * 1024L;
 
 
     /**
@@ -99,7 +103,7 @@ public class Configuration implements Serializable {
      */
     @Getter private long maximumSingleHostAllocation = Long.MAX_VALUE;
 
-    @Getter private long maximumSingleDeviceAllocation = Long.MAX_VALUE;
+    @Getter private long maximumSingleDeviceAllocation = 1024 * 1024 * 1024L;
 
     @Getter private List<Integer> availableDevices = new ArrayList<>();
 
@@ -107,11 +111,11 @@ public class Configuration implements Serializable {
 
     @Getter private int maximumGridSize = 128;
 
-    @Getter private int maximumBlockSize = 512;
+    @Getter private int maximumBlockSize = 128;
 
-    @Getter private long maximumHostCache = Long.MAX_VALUE;
+    @Getter private long maximumHostCache = 3 * 1024 * 1024 * 1024L;
 
-    @Getter private long maximumDeviceCache = Long.MAX_VALUE;
+    @Getter private long maximumDeviceCache = 1024 * 1024 * 1024L;
 
     @Getter private boolean usePreallocation = true;
 
@@ -122,6 +126,8 @@ public class Configuration implements Serializable {
     @Getter private long maximumDeviceCacheableLength = 100663296;
 
     @Getter private int commandQueueLength = 3;
+
+    @Getter private int commandLanesNumber = 4;
 
     private final AtomicBoolean initialized = new AtomicBoolean(false);
 
@@ -250,7 +256,7 @@ public class Configuration implements Serializable {
      */
     public Configuration setMaximumGridSize(int gridDim) {
         if (gridDim <= 0 || gridDim > 512)
-            throw new IllegalStateException("Please keep gridDim in range [64...512]");
+            throw new IllegalStateException("Please keep gridDim in range [8...512]");
 
         this.maximumGridSize = gridDim;
 
@@ -268,8 +274,8 @@ public class Configuration implements Serializable {
      * @return
      */
     public Configuration setMaximumBlockSize(int blockDim) {
-        if (blockDim < 64 || blockDim > 512)
-            throw new IllegalStateException("Please keep blockDim in range [64...512]");
+        if (blockDim < 64 || blockDim > 768)
+            throw new IllegalStateException("Please keep blockDim in range [64...768]");
 
 
         this.maximumBlockSize = blockDim;
@@ -290,6 +296,14 @@ public class Configuration implements Serializable {
         this.debug = debug;
 
         nativeOps.enableDebugMode(debug);
+
+        return this;
+    }
+
+    public Configuration setVerbose(boolean verbose) {
+        this.verbose = verbose;
+
+        nativeOps.enableVerboseMode(verbose);
 
         return this;
     }
@@ -315,13 +329,14 @@ public class Configuration implements Serializable {
      * ASYNCHRONOUS: Issue commands asynchronously, if that's possible.
      * OPTIMIZED: Not implemented yet. Equals to asynchronous for now.
      *
-     * Default value: ASYNCHRONOUS
+     * Default value: SEQUENTIAL
      *
      * @param executionModel
      * @return
      */
     public Configuration setExecutionModel(@NonNull ExecutionModel executionModel) {
-        this.executionModel = executionModel;
+        // FIXME: rc3.9: temporary hardcoded SEQUENTIAL execution model.
+        this.executionModel = ExecutionModel.SEQUENTIAL;
 
         return this;
     }
@@ -460,6 +475,43 @@ public class Configuration implements Serializable {
             throw new IllegalStateException("Command queue length can't be <= 0");
         this.commandQueueLength = length;
 
+        return this;
+    }
+
+    /**
+     * This method allows you to specify maximum number of probable parallel cuda processes
+     *
+     * Default value: 4
+     *
+     * PLEASE NOTE: This parameter has effect only for ASYNCHRONOUS execution model
+     *
+     * @param length
+     * @return
+     */
+    public Configuration setCommandLanesNumber(int length) {
+        if (length < 1)
+            throw new IllegalStateException("Command Lanes number can't be < 1");
+        if (length > 8)
+            length = 8;
+        this.commandLanesNumber = length;
+
+        return this;
+    }
+
+    public boolean isForcedSingleGPU() {
+        return forceSingleGPU;
+    }
+
+    /**
+     * This method allows you to enable or disable multi-GPU mode.
+     *
+     * PLEASE NOTE: This is NOT magic method, that will automatically scale your application performance.
+     *
+     * @param reallyAllow
+     * @return
+     */
+    public Configuration allowMultiGPU(boolean reallyAllow) {
+        forceSingleGPU = reallyAllow;
         return this;
     }
 }

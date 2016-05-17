@@ -79,7 +79,7 @@
                 <os><arch>i386</arch></os>
             </activation>
             <properties>
-                <os.arch>x86</os.arch>
+                <os.arch>x86_64</os.arch>
             </properties>
         </profile>
         <profile>
@@ -88,7 +88,7 @@
                 <os><arch>i486</arch></os>
             </activation>
             <properties>
-                <os.arch>x86</os.arch>
+                <os.arch>x86_64</os.arch>
             </properties>
         </profile>
         <profile>
@@ -97,7 +97,7 @@
                 <os><arch>i586</arch></os>
             </activation>
             <properties>
-                <os.arch>x86</os.arch>
+                <os.arch>x86_64</os.arch>
             </properties>
         </profile>
         <profile>
@@ -106,7 +106,16 @@
                 <os><arch>i686</arch></os>
             </activation>
             <properties>
-                <os.arch>x86</os.arch>
+                <os.arch>x86_64</os.arch>
+            </properties>
+        </profile>
+        <profile>
+            <id>x86</id>
+            <activation>
+                <os><arch>x86</arch></os>
+            </activation>
+            <properties>
+                <os.arch>x86_64</os.arch>
             </properties>
         </profile>
         <profile>
@@ -243,7 +252,7 @@
         <netty.version>4.0.28.Final</netty.version>
         <slf4j.version>1.7.10</slf4j.version>
         <logback.version>1.1.2</logback.version>
-        <javacpp.version>1.2-SNAPSHOT</javacpp.version>
+        <javacpp.version>1.2</javacpp.version>
         <process-classes.skip> false</process-classes.skip>  <!-- To skip native compilation phase: -Dprocess-classes.skip=true    -->
         <javacpp.platform>${os.name}-${os.arch}</javacpp.platform> <!-- For Android: -Dplatform=android-arm                                        -->
         <javacpp.platform.root />            <!--              -Dplatform.root=/path/to/android-ndk/                         -->
@@ -278,6 +287,7 @@
                 <configuration>
                     <includes>
                         <include>**/*.so</include>
+                        <include>**/*.so.*</include>
                         <include>META-INF/*</include>
                         <include>META-INF/services/**</include>
                         <include>org.*</include>
@@ -312,6 +322,32 @@
                         </goals>
                     </execution>
                 </executions>
+            </plugin>
+            <plugin>
+                <artifactId>maven-deploy-plugin</artifactId>
+                <configuration>
+                    <skip>true</skip>
+                </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.sonatype.plugins</groupId>
+                <artifactId>nexus-staging-maven-plugin</artifactId>
+                <version>1.6.6</version>
+                <executions>
+                    <execution>
+                        <id>default-deploy</id>
+                        <phase>deploy</phase>
+                        <goals>
+                            <goal>deploy</goal>
+                        </goals>
+                    </execution>
+                </executions>
+                <extensions>true</extensions>
+                <configuration>
+                    <serverId>nexus-releases</serverId>
+                    <nexusUrl>https://oss.sonatype.org/</nexusUrl>
+                    <skipStagingRepositoryClose>true</skipStagingRepositoryClose>
+                </configuration>
             </plugin>
         </plugins>
 
@@ -352,7 +388,10 @@
                     <version>2.5</version>
                     <configuration>
                         <mavenExecutorId>forked-path</mavenExecutorId>
-                        <arguments>-Psonatype-oss-release -DskipTests</arguments>
+                        <!-- To deploy to an open staging repository: -Darguments=-DstagingRepositoryId=orgnd4j-xxxx -->
+                        <arguments>-Psonatype-oss-release -DskipTests ${arguments}</arguments>
+                        <localCheckout>true</localCheckout>
+                        <pushChanges>false</pushChanges>
                     </configuration>
                 </plugin>
                 <plugin>

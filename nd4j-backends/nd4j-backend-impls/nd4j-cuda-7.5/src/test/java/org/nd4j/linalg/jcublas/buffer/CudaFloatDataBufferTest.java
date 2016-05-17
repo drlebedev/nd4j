@@ -533,7 +533,7 @@ public class CudaFloatDataBufferTest {
 
         assertEquals(true, point.isActualOnDeviceSide());
 
-        assertEquals(AllocationStatus.HOST, point.getAllocationStatus());
+        assertEquals(AllocationStatus.DEVICE, point.getAllocationStatus());
     }
 
     @Test
@@ -593,7 +593,7 @@ public class CudaFloatDataBufferTest {
         buffer.put(0, 10f);
         System.out.println("AZ --------------------------");
 
-        assertEquals(AllocationStatus.HOST, point.getAllocationStatus());
+        assertEquals(AllocationStatus.DEVICE, point.getAllocationStatus());
     }
 
     @Test
@@ -604,14 +604,14 @@ public class CudaFloatDataBufferTest {
 
         AllocationPoint pointShape = ((BaseCudaDataBuffer) array.shapeInfoDataBuffer()).getAllocationPoint();
 
-        assertEquals(false, pointShape.isActualOnDeviceSide());
+        assertEquals(true, pointShape.isActualOnDeviceSide());
         assertEquals(true, pointShape.isActualOnHostSide());
 
         assertEquals(false, pointMain.isActualOnDeviceSide());
         assertEquals(true, pointMain.isActualOnHostSide());
 
         assertEquals(AllocationStatus.DEVICE, pointMain.getAllocationStatus());
-        assertEquals(AllocationStatus.HOST, pointShape.getAllocationStatus());
+        assertEquals(AllocationStatus.DEVICE, pointShape.getAllocationStatus());
     }
 
     @Test
@@ -622,14 +622,14 @@ public class CudaFloatDataBufferTest {
 
         AllocationPoint pointShape = ((BaseCudaDataBuffer) array.shapeInfoDataBuffer()).getAllocationPoint();
 
-        assertEquals(false, pointShape.isActualOnDeviceSide());
+        assertEquals(true, pointShape.isActualOnDeviceSide());
         assertEquals(true, pointShape.isActualOnHostSide());
 
         assertEquals(true, pointMain.isActualOnDeviceSide());
         assertEquals(false, pointMain.isActualOnHostSide());
 
         assertEquals(AllocationStatus.DEVICE, pointMain.getAllocationStatus());
-        assertEquals(AllocationStatus.HOST, pointShape.getAllocationStatus());
+        assertEquals(AllocationStatus.DEVICE, pointShape.getAllocationStatus());
     }
 
     @Test
@@ -643,7 +643,7 @@ public class CudaFloatDataBufferTest {
         assertEquals(false, pointMain.isActualOnDeviceSide());
         assertEquals(true, pointMain.isActualOnHostSide());
 
-        assertEquals(false, pointShape.isActualOnDeviceSide());
+        assertEquals(true, pointShape.isActualOnDeviceSide());
         assertEquals(true, pointShape.isActualOnHostSide());
     }
 
@@ -674,7 +674,55 @@ public class CudaFloatDataBufferTest {
     }
 
     @Test
-    public void testDup4() throws Exception {
+    public void testReshape1() throws Exception {
+        INDArray arrayC = Nd4j.zeros(1000);
+        INDArray arrayF = arrayC.reshape('f', 10, 100);
 
+        assertEquals(102, arrayF.shapeInfoDataBuffer().getInt(7));
+        assertEquals(1, arrayF.shapeInfoDataBuffer().getInt(6));
+
+        System.out.println(arrayC.shapeInfoDataBuffer());
+        System.out.println(arrayF.shapeInfoDataBuffer());
+
+        System.out.println("Stride: " + arrayF.elementWiseStride());
+
+        System.out.println(arrayF.shapeInfoDataBuffer());
+
+        assertEquals('f', Shape.getOrder(arrayF));
+        assertEquals(102, arrayF.shapeInfoDataBuffer().getInt(7));
+        assertEquals(1, arrayF.shapeInfoDataBuffer().getInt(6));
+
+        INDArray arrayZ = Nd4j.create(10, 100, 'f');
+    }
+
+    @Test
+    public void testReshapeDup1() throws Exception {
+        INDArray arrayC = Nd4j.create(10, 100);
+        INDArray arrayF = arrayC.dup('f');
+
+        System.out.println(arrayC.shapeInfoDataBuffer());
+        System.out.println(arrayF.shapeInfoDataBuffer());
+
+        assertEquals(102, arrayF.shapeInfoDataBuffer().getInt(7));
+        assertEquals(1, arrayF.shapeInfoDataBuffer().getInt(6));
+    }
+
+    @Test
+    public void testReshapeDup2() throws Exception {
+        INDArray arrayC = Nd4j.create(5, 10, 100);
+        INDArray arrayF = arrayC.dup('f');
+
+        System.out.println(arrayC.shapeInfoDataBuffer());
+        System.out.println(arrayF.shapeInfoDataBuffer());
+
+        assertEquals(102, arrayF.shapeInfoDataBuffer().getInt(9));
+        assertEquals(1, arrayF.shapeInfoDataBuffer().getInt(8));
+    }
+
+    @Test public void testPermuteAssingn(){
+        INDArray arr = Nd4j.linspace(1,60,60).reshape('c',3,4,5);
+        INDArray arr2 = arr.permute(1,0,2);
+        INDArray arr3 = arr2.dup('c');
+        assertEquals(arr2,arr3);
     }
 }

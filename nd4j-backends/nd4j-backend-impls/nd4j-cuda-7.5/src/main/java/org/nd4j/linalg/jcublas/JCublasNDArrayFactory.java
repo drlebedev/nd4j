@@ -19,8 +19,11 @@
 
 package org.nd4j.linalg.jcublas;
 
+import org.apache.commons.math3.util.Pair;
+import org.bytedeco.javacpp.LongPointer;
 import org.nd4j.jita.allocator.impl.AtomicAllocator;
 import org.nd4j.jita.allocator.pointers.CudaPointer;
+import org.nd4j.jita.allocator.tad.TADManager;
 import org.nd4j.jita.allocator.utils.AllocationUtils;
 import org.nd4j.linalg.api.buffer.DataBuffer;
 import org.nd4j.linalg.api.complex.IComplexDouble;
@@ -36,6 +39,7 @@ import org.nd4j.linalg.jcublas.blas.JcublasLevel1;
 import org.nd4j.linalg.jcublas.blas.JcublasLevel2;
 import org.nd4j.linalg.jcublas.blas.JcublasLevel3;
 import org.nd4j.linalg.jcublas.buffer.AddressRetriever;
+import org.nd4j.linalg.jcublas.buffer.CudaDoubleDataBuffer;
 import org.nd4j.linalg.jcublas.complex.ComplexDouble;
 import org.nd4j.linalg.jcublas.complex.ComplexFloat;
 import org.nd4j.linalg.jcublas.complex.JCublasComplexNDArray;
@@ -469,7 +473,19 @@ public class JCublasNDArrayFactory extends BaseNDArrayFactory {
                 allocator.memcpyAsync(ret.data(),new CudaPointer(allocator.getHostPointer(m).address()), AllocationUtils.getRequiredMemory(AllocationUtils.buildAllocationShape(m)), linearIndex * (m.data().dataType() == DataBuffer.Type.DOUBLE ? 8 : 4));
                 linearIndex += m.length();
             } else {
-                long[] extras = new long[]{ AddressRetriever.retrieveHostAddress(m.shapeInfoDataBuffer()), context.getOldStream().getNativePointer(), allocator.getDeviceId(), context.getBufferAllocation(), context.getBufferReduction(), context.getBufferScalar()};
+                long hostYShapeInfo = AddressRetriever.retrieveHostAddress(m.shapeInfoDataBuffer());
+
+                long[] extras = new long[]{
+                        AddressRetriever.retrieveHostAddress(ret.shapeInfoDataBuffer()),
+                        context.getOldStream().getNativePointer(),
+                        allocator.getDeviceId(),
+                        context.getBufferAllocation(),
+                        context.getBufferReduction(),
+                        context.getBufferScalar(),
+                        context.getBufferSpecial(),
+                        hostYShapeInfo,
+                        AddressRetriever.retrieveHostAddress(ret.shapeInfoDataBuffer())
+                };
 
                 if (m.data().dataType() == DataBuffer.Type.DOUBLE) {
                     nativeOps.flattenDouble(
@@ -509,5 +525,113 @@ public class JCublasNDArrayFactory extends BaseNDArrayFactory {
             if (ret != null) allocator.registerAction(context, ret, m);
         }
         return ret;
+    }
+
+    @Override
+    public INDArray concat(int dimension, INDArray... toConcat) {
+        if (toConcat.length == 1)
+            return toConcat[0];
+
+        int sumAlongDim = 0;
+        for (int i = 0; i < toConcat.length; i++) {
+            sumAlongDim += toConcat[i].size(dimension);
+        }
+
+        int[] outputShape = ArrayUtil.copy(toConcat[0].shape());
+
+        outputShape[dimension] = sumAlongDim;
+        int[] sortedStrides = Nd4j.getStrides(outputShape);
+
+        INDArray ret = Nd4j.create(outputShape,sortedStrides);
+
+        AtomicAllocator allocator = AtomicAllocator.getInstance();
+
+        CudaContext context =  allocator.getFlowController().prepareAction(ret, toConcat);
+
+        long[] shapeInfoPointers = new long[toConcat.length];
+        long[] dataPointers = new long[toConcat.length];
+        long[] tadPointers = new long[toConcat.length];
+        long[] offsetsPointers = new long[toConcat.length];
+
+        TADManager tadManager = ((JCudaExecutioner) Nd4j.getExecutioner()).getTadManager();
+        for(int i = 0; i < toConcat.length; i++) {
+            shapeInfoPointers[i] = AddressRetriever.retrieveDeviceAddress(toConcat[i].shapeInfoDataBuffer(), context);
+            dataPointers[i] = AtomicAllocator.getInstance().getPointer(toConcat[i], context).address();
+
+            Pair<DataBuffer, DataBuffer> tadBuffers = tadManager.getTADOnlyShapeInfo(toConcat[i], new int[]{dimension});
+
+            long devTadShapeInfo = AtomicAllocator.getInstance().getPointer(tadBuffers.getFirst(), context).address();
+
+            DataBuffer offsets = tadBuffers.getSecond();
+            long devTadOffsets = AtomicAllocator.getInstance().getPointer(offsets, context).address();
+
+            tadPointers[i] = devTadShapeInfo;
+            offsetsPointers[i] = devTadOffsets;
+        }
+
+        //System.out.println("shapePointers: " + Arrays.toString(shapeInfoPointers));
+
+        long dZ = AtomicAllocator.getInstance().getPointer(ret, context).address();
+        long dZShapeInfo = AddressRetriever.retrieveDeviceAddress(ret.shapeInfoDataBuffer(), context);
+
+        long[] extras = new long[]{
+                AddressRetriever.retrieveHostAddress(ret.shapeInfoDataBuffer()),
+                context.getOldStream().getNativePointer(),
+                allocator.getDeviceId(),
+                context.getBufferAllocation(),
+                context.getBufferReduction(),
+                context.getBufferScalar(),
+                context.getBufferSpecial(),
+                AddressRetriever.retrieveHostAddress(toConcat[0].shapeInfoDataBuffer()),
+                AddressRetriever.retrieveHostAddress(ret.shapeInfoDataBuffer())
+        };
+
+        CudaDoubleDataBuffer tempData = new CudaDoubleDataBuffer(toConcat.length);
+        CudaDoubleDataBuffer tempShapes = new CudaDoubleDataBuffer(toConcat.length);
+        CudaDoubleDataBuffer tempTAD = new CudaDoubleDataBuffer(toConcat.length);
+        CudaDoubleDataBuffer tempOffsets = new CudaDoubleDataBuffer(toConcat.length);
+
+        AtomicAllocator.getInstance().memcpyBlocking(tempData, new LongPointer(dataPointers), dataPointers.length * 8, 0);
+        AtomicAllocator.getInstance().memcpyBlocking(tempShapes, new LongPointer(shapeInfoPointers), shapeInfoPointers.length * 8, 0);
+        AtomicAllocator.getInstance().memcpyBlocking(tempTAD, new LongPointer(tadPointers), tadPointers.length * 8, 0);
+        AtomicAllocator.getInstance().memcpyBlocking(tempOffsets, new LongPointer(offsetsPointers), offsetsPointers.length * 8, 0);
+
+        long dataPointer = AtomicAllocator.getInstance().getPointer(tempData, context).address();
+        long shapesPointer = AtomicAllocator.getInstance().getPointer(tempShapes, context).address();
+        long tadPointer = AtomicAllocator.getInstance().getPointer(tempTAD, context).address();
+        long offsetPointer = AtomicAllocator.getInstance().getPointer(tempOffsets, context).address();
+
+       // System.out.println("ShapesPointer after conversion: " + shapesPointer);
+
+        if(ret.data().dataType() == DataBuffer.Type.DOUBLE) {
+            nativeOps.concatDouble(
+                    extras,
+                    dimension,
+                    toConcat.length,
+                    new long[] {dataPointer},
+                    new long[] {shapesPointer},
+                    dZ,
+                    dZShapeInfo,
+                    new long[] {tadPointer},
+                    new long[] {offsetPointer});
+        }
+        else {
+            nativeOps.concatFloat(
+                    extras,
+                    dimension,
+                    toConcat.length,
+                    new long[] {dataPointer},
+                    new long[] {shapesPointer},
+                    dZ,
+                    dZShapeInfo,
+                    new long[] {tadPointer},
+                    new long[] {offsetPointer});
+
+        }
+
+        allocator.registerAction(context, ret, toConcat);
+
+        return ret;
+        //return super.concat(dimension, toConcat);
     }
 }

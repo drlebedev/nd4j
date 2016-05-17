@@ -1,6 +1,7 @@
 package org.nd4j.nativeblas;
 
 
+import java.util.Properties;
 import org.bytedeco.javacpp.Loader;
 import org.bytedeco.javacpp.Pointer;
 import org.bytedeco.javacpp.annotation.Platform;
@@ -15,16 +16,17 @@ import org.slf4j.LoggerFactory;
  * Native interface for
  * op execution on cpu
  * @author Adam Gibson
- *
- * the preload="libnd4j" is there because MinGW puts a "lib" in front of the filename for the DLL, but at load time,
- * we are using the default Windows platform naming scheme, which doesn't put "lib" in front, so that's a bit of a hack,
- * but easier than forcing MinGW into not renaming the library name -- @saudet on 3/21/16
  */
-@Platform(include={"NativeOps.h"}, preload="libnd4j", link = "nd4j")
+@Platform(include = "NativeOps.h", compiler = "cpp11", link = "nd4j", library = "jnind4j")
 public class NativeOps extends Pointer {
     private static Logger log = LoggerFactory.getLogger(NativeOps.class);
     static {
-        Loader.load();
+        // using our custom platform properties from resources, load
+        // in priority libraries found in library path over bundled ones
+        String platform = Loader.getPlatform();
+        Properties properties = Loader.loadProperties(platform + "-nd4j", platform);
+        properties.remove("platform.preloadpath");
+        Loader.load(NativeOps.class, properties, true);
     }
 
     public NativeOps() {
@@ -866,12 +868,15 @@ public class NativeOps extends Pointer {
      * @param resultShapeInfo
      */
     public native void concatDouble(
+            long[] extraPointers,
             int dimension,
             int numArrays,
             long []data,
             long [] inputShapeInfo,
             long result,
-            long resultShapeInfo);
+            long resultShapeInfo,
+            long []tadPointers,
+            long []tadOffsets);
 
     /**
      *
@@ -882,12 +887,15 @@ public class NativeOps extends Pointer {
      * @param resultShapeInfo
      */
     public native void concatFloat(
+            long[] extraPointers,
             int dimension,
             int numArrays,
             long []data,
             long [] inputShapeInfo,
             long result,
-            long resultShapeInfo);
+            long resultShapeInfo,
+            long []tadPointers,
+            long []tadOffsets);
 
     /**
      * Gets the number of open mp threads
@@ -936,17 +944,27 @@ public class NativeOps extends Pointer {
 
     public native long getDeviceFreeMemory(long ptrToDeviceId);
 
+    public native long getDeviceTotalMemory(long ptrToDeviceId);
+
     public native long memcpy(long dst, long src, long size, int flags, long reserved);
 
     public native long memcpyAsync(long dst, long src, long size, int flags, long reserved);
+
+    public native long memcpyConstantAsync(long dst, long src, long size, int flags, long reserved);
 
     public native long memset(long dst, int value, long size,  int flags, long reserved);
 
     public native long memsetAsync(long dst, int value, long size, int flags, long reserved);
 
+    public native long getConstantSpace();
+
     public native long getAvailableDevices();
 
     public native void enableDebugMode(boolean reallyEnable);
 
+    public native void enableVerboseMode(boolean reallyEnable);
+
     public native void setGridLimit(int gridSize);
+
+    public native void tadOnlyShapeInfo(long shapeInfo, long dimension, int dimensionLength, long targetBuffer, long offsetsBuffer);
 }

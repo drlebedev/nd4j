@@ -121,6 +121,16 @@ public class CudaIndexReduceTests {
     }
 
     @Test
+    public void testIMaxAlongDimension() throws Exception {
+        INDArray array = Nd4j.linspace(1, 491520, 491520).reshape(10, 3, 4, 64, 64);
+
+        INDArray result = Nd4j.argMax(array, 4);
+        System.out.println("Result shapeInfo: " + result.shapeInfoDataBuffer());
+        System.out.println("Result length: " + result.length());
+        //System.out.println("Result: " + result);
+    }
+
+    @Test
     public void testIMax3() {
         INDArray array1 = Nd4j.linspace(1, 1000, 128000).reshape(128, 1000);
 
@@ -216,5 +226,25 @@ public class CudaIndexReduceTests {
 
         System.out.println("Array1: " + array1);
         assertEquals(0, idx);
+    }
+
+    @Test
+    public void testIMaxF1() throws Exception {
+        Nd4j.getRandom().setSeed(12345);
+
+        INDArray arr = Nd4j.rand('f',10,2);
+        for( int i=0; i<10; i++ ){
+            INDArray row = arr.getRow(i);
+            int maxIdx;
+            if(row.getDouble(0) > row.getDouble(1)) maxIdx = 0;
+            else maxIdx = 1;
+            INDArray argmax = Nd4j.argMax(row,1);
+            double argmaxd = argmax.getDouble(0);
+
+            assertEquals(maxIdx, (int)argmaxd);
+            System.out.println(row);
+            System.out.println(argmax);
+            System.out.println("exp: " + maxIdx + ", act: " + argmaxd);
+        }
     }
 }
